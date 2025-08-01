@@ -42,7 +42,7 @@
       "size": "7B",
       "quantization": "8bit",
       "description": "Qwen3-7B instruction-tuned GGUF. Effective context: ~32k tokens, maximum supported: 131k tokens",
-      "memory_estimate_gb": 5,
+      "memory_estimate_gb": 8.5,
       "recommended_gpus": 1,
       "chat_template": "qwen3",
       "trust_remote_code": true,
