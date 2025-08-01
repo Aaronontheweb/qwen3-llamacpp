@@ -34,12 +34,13 @@ class LlamaBackend:
         # llama.cpp settings
         self.llama_settings = {
             "n_gpu_layers": -1,  # Use all available GPUs
-            "n_ctx": 262144,     # Context length - 256k tokens (let users decide)
+            "n_ctx": 131072,     # Max context length - 128k tokens
             "n_batch": 512,      # Batch size
             "n_threads": os.cpu_count(),  # Use all CPU threads
             "verbose": False,    # Disable verbose output
             "use_mmap": True,    # Use memory mapping
             "use_mlock": False,  # Don't lock memory
+            "cont_batching": True,  # Enable continuous batching for dynamic growth
         }
         
         # Update settings from config
@@ -107,9 +108,8 @@ class LlamaBackend:
             # Round down to nearest 1024 for safety
             max_tokens_estimate = (max_tokens_estimate // 1024) * 1024
 
-            # Respect a hard upper cap (model training context or llama.cpp max)
-            hard_cap = model_config.get("max_context_tokens", 262144)
-            estimated_ctx = max(4096, min(max_tokens_estimate, hard_cap))
+            # Use the full available context - let it grow as needed
+            estimated_ctx = 131072
 
             settings["n_ctx"] = estimated_ctx
             logger.info(f"Estimated context window based on GPU memory: {estimated_ctx} tokens (model size {model_size})")

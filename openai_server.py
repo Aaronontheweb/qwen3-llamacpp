@@ -723,10 +723,10 @@ def main():
         # Create server
         server = Qwen3APIServer(args.config)
         
-        # Override context window if specified
-        if args.context_window:
-            logger.info(f"Overriding context window to {args.context_window} tokens")
-            server.backend.llama_settings["n_ctx"] = args.context_window
+            # Override context window if specified
+    if args.context_window:
+        logger.info(f"Overriding context window to {args.context_window} tokens")
+        server.backend.llama_settings["n_ctx"] = args.context_window
         
         # Load specific model if requested
         if args.model:
