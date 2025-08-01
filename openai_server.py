@@ -555,7 +555,7 @@ class Qwen3APIServer:
             logger.info(f"=== RESPONSE SENT ===")
             logger.info(f"Tool calls: {len(tool_calls)}, Finish reason: {choice['finish_reason']}")
             
-            return final_response
+            return response.model_dump()
             
         except Exception as e:
             logger.error(f"Generation error: {e}")
