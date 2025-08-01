@@ -151,13 +151,16 @@ class ModelManagerCLI:
             
             console.print(f"[green]Downloading {model_name}...[/green]")
             
-            # Download the model file - use Q4_K_M for good balance of size and quality
-            model_file = hf_hub_download(
+            # Download the model file - let HuggingFace find the GGUF file automatically
+            from huggingface_hub import snapshot_download
+            
+            # Download the entire repository and let the model loader find the GGUF file
+            model_file = snapshot_download(
                 repo_id=model_name,
-                filename="llama-2-7b-chat.Q4_K_M.gguf",
                 local_dir=model_dir,
                 local_dir_use_symlinks=False,
-                resume_download=True
+                resume_download=True,
+                allow_patterns="*.gguf"  # Only download GGUF files
             )
             
             console.print(f"[green]✓ Model {model_id} downloaded successfully[/green]")

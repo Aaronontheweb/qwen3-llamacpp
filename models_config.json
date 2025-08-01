@@ -1,7 +1,7 @@
 {
   "models": {
     "qwen3-30b-instruct": {
-      "name": "unsloth/Qwen3-30B-A3B-Instruct-2507",
+      "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF",
       "type": "instruction",
       "size": "30B",
       "quantization": "4bit",
@@ -16,12 +16,12 @@
         "top_p": 0.9
       }
     },
-    "qwen3-14b-instruct": {
-      "name": "unsloth/Qwen3-14B-Instruct",
+    "phi-4-reasoning": {
+      "name": "unsloth/Phi-4-reasoning-GGUF",
       "type": "instruction",
-      "size": "14B", 
+      "size": "15B", 
       "quantization": "4bit",
-      "description": "Medium instruction-following model, good balance",
+      "description": "Medium reasoning model, good balance",
       "memory_estimate_gb": 8,
       "recommended_gpus": 1,
       "chat_template": "qwen3",
@@ -48,13 +48,13 @@
         "top_p": 0.9
       }
     },
-    "qwen3-8b-instruct": {
-      "name": "unsloth/Qwen3-8B-Instruct",
+    "phi-4-mini": {
+      "name": "unsloth/Phi-4-mini-instruct-GGUF",
       "type": "instruction", 
-      "size": "8B",
+      "size": "4B",
       "quantization": "4bit",
       "description": "Fast instruction-following model for simple tasks",
-      "memory_estimate_gb": 5,
+      "memory_estimate_gb": 2,
       "recommended_gpus": 1,
       "chat_template": "qwen3",
       "trust_remote_code": true,
@@ -65,13 +65,13 @@
       }
     },
     "qwen3-coder-14b": {
-      "name": "unsloth/Qwen3-Coder-14B-Instruct",
+      "name": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
       "type": "coder",
-      "size": "14B",
+      "size": "30B",
       "quantization": "4bit", 
       "description": "Specialized for code generation and programming",
-      "memory_estimate_gb": 8,
-      "recommended_gpus": 1,
+      "memory_estimate_gb": 18,
+      "recommended_gpus": 2,
       "chat_template": "qwen3",
       "trust_remote_code": true,
       "default_params": {
