@@ -1,0 +1,92 @@
+{
+  "models": {
+    "qwen3-30b-instruct": {
+      "name": "unsloth/Qwen3-30B-A3B-Instruct-2507",
+      "type": "instruction",
+      "size": "30B",
+      "quantization": "4bit",
+      "description": "Large instruction-following model for complex tasks",
+      "memory_estimate_gb": 18,
+      "recommended_gpus": 2,
+      "chat_template": "qwen3",
+      "trust_remote_code": true,
+      "default_params": {
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 0.9
+      }
+    },
+    "qwen3-14b-instruct": {
+      "name": "unsloth/Qwen3-14B-Instruct",
+      "type": "instruction",
+      "size": "14B", 
+      "quantization": "4bit",
+      "description": "Medium instruction-following model, good balance",
+      "memory_estimate_gb": 8,
+      "recommended_gpus": 1,
+      "chat_template": "qwen3",
+      "trust_remote_code": true,
+      "default_params": {
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 0.9
+      }
+    },
+    "qwen3-7b-instruct": {
+      "name": "TheBloke/Llama-2-7B-Chat-GGUF",
+      "type": "instruction", 
+      "size": "7B",
+      "quantization": "4bit",
+      "description": "Fast instruction-following model for simple tasks",
+      "memory_estimate_gb": 4,
+      "recommended_gpus": 1,
+      "chat_template": "qwen3",
+      "trust_remote_code": true,
+      "default_params": {
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 0.9
+      }
+    },
+    "qwen3-8b-instruct": {
+      "name": "unsloth/Qwen3-8B-Instruct",
+      "type": "instruction", 
+      "size": "8B",
+      "quantization": "4bit",
+      "description": "Fast instruction-following model for simple tasks",
+      "memory_estimate_gb": 5,
+      "recommended_gpus": 1,
+      "chat_template": "qwen3",
+      "trust_remote_code": true,
+      "default_params": {
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 0.9
+      }
+    },
+    "qwen3-coder-14b": {
+      "name": "unsloth/Qwen3-Coder-14B-Instruct",
+      "type": "coder",
+      "size": "14B",
+      "quantization": "4bit", 
+      "description": "Specialized for code generation and programming",
+      "memory_estimate_gb": 8,
+      "recommended_gpus": 1,
+      "chat_template": "qwen3",
+      "trust_remote_code": true,
+      "default_params": {
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "top_p": 0.95
+      }
+    }
+  },
+  "active_model": "qwen3-7b-instruct",
+  "download_path": "./models",
+  "cache_dir": "./cache",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "log_level": "INFO"
+  }
+} 
