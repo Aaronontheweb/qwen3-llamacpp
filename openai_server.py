@@ -179,26 +179,14 @@ class Qwen3APIServer:
     def _clear_server_logs(self):
         """Clear server logs on startup for cleaner debugging"""
         import os
-        
-        # Ensure logs directory exists
-        os.makedirs("logs", exist_ok=True)
-        
         log_files = ["logs/qwen3_server.log", "debug_dump.json"]
-        cleared_count = 0
-        
         for log_file in log_files:
             try:
                 if os.path.exists(log_file):
                     os.remove(log_file)
                     print(f"🧹 Cleared {log_file}")
-                    cleared_count += 1
             except Exception as e:
                 print(f"⚠️  Could not clear {log_file}: {e}")
-        
-        if cleared_count == 0:
-            print("✨ Starting with clean logs (no previous logs found)")
-        
-        print(f"🚀 Server starting...")
     
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration file"""
