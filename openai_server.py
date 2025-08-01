@@ -120,6 +120,9 @@ class Qwen3APIServer:
     """OpenAI-compatible API server for Qwen3 models"""
     
     def __init__(self, config_path: str = "models_config.json"):
+        # Clear server logs on startup for cleaner debugging
+        self._clear_server_logs()
+        
         self.config_path = config_path
         self.config = self._load_config()
         self.model_manager = get_model_manager(self.config)
@@ -173,6 +176,18 @@ class Qwen3APIServer:
         # Set up routes
         self._setup_routes()
     
+    def _clear_server_logs(self):
+        """Clear server logs on startup for cleaner debugging"""
+        import os
+        log_files = ["logs/qwen3_server.log", "debug_dump.json"]
+        for log_file in log_files:
+            try:
+                if os.path.exists(log_file):
+                    os.remove(log_file)
+                    print(f"🧹 Cleared {log_file}")
+            except Exception as e:
+                print(f"⚠️  Could not clear {log_file}: {e}")
+    
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration file"""
         try:
@@ -225,18 +240,11 @@ class Qwen3APIServer:
         async def chat_completions(request: ChatCompletionRequest):
             """Chat completions endpoint"""
             try:
-                # Debug: Log full request
-                request_dump = {
-                    "model": request.model,
-                    "messages": [msg.model_dump() for msg in request.messages],
-                    "tools": [tool.model_dump() for tool in request.tools] if request.tools else None,
-                    "tool_choice": request.tool_choice,
-                    "temperature": request.temperature,
-                    "max_tokens": request.max_tokens,
-                    "stream": request.stream
-                }
-                logger.info(f"=== CHAT COMPLETION REQUEST ===")
-                logger.info(f"REQUEST: {json.dumps(request_dump, indent=2)}")
+                # Debug: Log essential request info only
+                tool_names = [t.function.name for t in request.tools] if request.tools else []
+                logger.info(f"=== NEW REQUEST ===")
+                logger.info(f"Tools available: {tool_names}")
+                logger.info(f"Stream: {request.stream}, Max tokens: {request.max_tokens}")
                 
                 # Check if model is loaded
                 if not self.backend.model:
@@ -256,11 +264,9 @@ class Qwen3APIServer:
                 # Generate prompt
                 prompt = self._create_prompt(messages, tools)
                 
-                # Debug: Log generated prompt (truncated for readability)
-                logger.info(f"=== GENERATED PROMPT ===")
-                logger.info(f"PROMPT (first 500 chars): {prompt[:500]}...")
-                logger.info(f"PROMPT (last 500 chars): ...{prompt[-500:]}")
-                logger.info(f"PROMPT LENGTH: {len(prompt)} characters")
+                # Debug: Log prompt length only
+                logger.info(f"=== PROMPT READY ===")
+                logger.info(f"Prompt length: {len(prompt)} chars ({len(prompt.split())} tokens approx)")
                 
                 # Check context window usage and warn if approaching limits
                 prompt_tokens = len(prompt.split())  # Approximate token count
@@ -281,11 +287,9 @@ class Qwen3APIServer:
                     "top_p": request.top_p,
                 }
                 
-                # Debug: Log generation parameters
-                logger.info(f"=== GENERATION PARAMETERS ===")
-                logger.info(f"max_tokens: {request.max_tokens}")
-                logger.info(f"temperature: {request.temperature}")
-                logger.info(f"top_p: {request.top_p}")
+                # Debug: Log key generation parameters
+                logger.info(f"=== GENERATION ===")
+                logger.info(f"Max tokens: {request.max_tokens}, Temp: {request.temperature}")
                 
                 if request.stop:
                     generation_params["stop"] = request.stop
@@ -535,10 +539,9 @@ class Qwen3APIServer:
                 }
             )
             
-            # Debug: Log final response
-            final_response = response.model_dump()
-            logger.info(f"=== FINAL RESPONSE ===")
-            logger.info(f"RESPONSE: {json.dumps(final_response, indent=2)}")
+            # Debug: Log response summary
+            logger.info(f"=== RESPONSE SENT ===")
+            logger.info(f"Tool calls: {len(tool_calls)}, Finish reason: {choice['finish_reason']}")
             
             return final_response
             
