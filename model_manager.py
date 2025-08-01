@@ -151,16 +151,92 @@ class ModelManagerCLI:
             
             console.print(f"[green]Downloading {model_name}...[/green]")
             
-            # Download the model file - let HuggingFace find the GGUF file automatically
-            from huggingface_hub import snapshot_download
+            # Download the model file - use Q4_K_M for good balance of size and quality
+            from huggingface_hub import hf_hub_download
             
-            # Download the entire repository and let the model loader find the GGUF file
-            model_file = snapshot_download(
+            # Find available GGUF files and select the best quality that fits in GPU memory
+            from huggingface_hub import list_repo_files, hf_hub_url
+            import requests
+            
+            files = list_repo_files(model_name)
+            gguf_files = [f for f in files if f.endswith('.gguf')]
+            
+            if not gguf_files:
+                raise Exception(f"No GGUF files found in {model_name}")
+            
+            # Get available GPU memory
+            total_memory, available_memory = self.gpu_monitor.get_total_gpu_memory()
+            available_memory_gb = available_memory / 1024
+            
+            console.print(f"[blue]Available GPU memory: {available_memory_gb:.1f}GB[/blue]")
+            
+            # Get file sizes for all GGUF files
+            file_sizes = {}
+            for gguf_file in gguf_files:
+                try:
+                    # Get the download URL to check file size
+                    url = hf_hub_url(repo_id=model_name, filename=gguf_file)
+                    response = requests.head(url, allow_redirects=True)
+                    if response.status_code == 200:
+                        file_size_gb = int(response.headers.get('content-length', 0)) / (1024**3)
+                        file_sizes[gguf_file] = file_size_gb
+                        console.print(f"[dim]  {gguf_file}: {file_size_gb:.1f}GB[/dim]")
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Could not get size for {gguf_file}: {e}[/yellow]")
+                    # Estimate size based on filename
+                    if 'Q2_K' in gguf_file:
+                        file_sizes[gguf_file] = 8.0  # Rough estimate
+                    elif 'Q3_K' in gguf_file:
+                        file_sizes[gguf_file] = 10.0
+                    elif 'Q4_K' in gguf_file:
+                        file_sizes[gguf_file] = 15.0
+                    elif 'Q5_K' in gguf_file:
+                        file_sizes[gguf_file] = 20.0
+                    elif 'Q6_K' in gguf_file:
+                        file_sizes[gguf_file] = 25.0
+                    elif 'Q8_0' in gguf_file or 'BF16' in gguf_file:
+                        file_sizes[gguf_file] = 35.0
+                    else:
+                        file_sizes[gguf_file] = 15.0  # Default estimate
+            
+            # Sort files by quality (best to worst) and find the best that fits
+            # Quality order: BF16 > Q8_0 > Q6_K > Q5_K > Q4_K > Q3_K > Q2_K
+            quality_order = ['BF16', 'Q8_0', 'Q6_K', 'Q5_K', 'Q4_K', 'Q3_K', 'Q2_K']
+            
+            selected_file = None
+            selected_quality = None
+            
+            for quality in quality_order:
+                matching_files = [f for f in gguf_files if quality in f]
+                for file in matching_files:
+                    if file in file_sizes:
+                        file_size_gb = file_sizes[file]
+                        # Check if file fits in available memory (with 1GB buffer)
+                        if file_size_gb <= (available_memory_gb - 1.0):
+                            selected_file = file
+                            selected_quality = quality
+                            break
+                if selected_file:
+                    break
+            
+            # If no file fits, select the smallest available
+            if not selected_file:
+                smallest_file = min(file_sizes.items(), key=lambda x: x[1])
+                selected_file = smallest_file[0]
+                selected_quality = "smallest"
+                console.print(f"[yellow]Warning: No file fits in memory. Selecting smallest: {selected_file}[/yellow]")
+            
+            filename = selected_file
+            file_size = file_sizes.get(filename, "unknown")
+            console.print(f"[green]Selected: {filename} ({file_size:.1f}GB, {selected_quality} quality)[/green]")
+            
+            # Download the specific GGUF file
+            model_file = hf_hub_download(
                 repo_id=model_name,
+                filename=filename,
                 local_dir=model_dir,
                 local_dir_use_symlinks=False,
-                resume_download=True,
-                allow_patterns="*.gguf"  # Only download GGUF files
+                resume_download=True
             )
             
             console.print(f"[green]✓ Model {model_id} downloaded successfully[/green]")
