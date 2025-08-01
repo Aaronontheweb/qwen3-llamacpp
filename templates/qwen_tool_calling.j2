@@ -133,7 +133,22 @@
         {%- endfor %}
         {{- '<|im_end|>\n' }}
     {%- elif message.role == "user" or message.role == "system" or message.role == "assistant" %}
-        {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>' + '\n' }}
+        {%- if message.content is string %}
+            {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>' + '\n' }}
+        {%- elif message.content is iterable %}
+            {# Handle OpenAI v1.2+ array format #}
+            {%- set content_parts = [] %}
+            {%- for part in message.content %}
+                {%- if part is string %}
+                    {%- set _ = content_parts.append(part) %}
+                {%- elif part is mapping and part.type == "text" %}
+                    {%- set _ = content_parts.append(part.text) %}
+                {%- endif %}
+            {%- endfor %}
+            {{- '<|im_start|>' + message.role + '\n' + content_parts | join('') + '<|im_end|>' + '\n' }}
+        {%- else %}
+            {{- '<|im_start|>' + message.role + '\n' + (message.content | string) + '<|im_end|>' + '\n' }}
+        {%- endif %}
     {%- elif message.role == "tool" %}
         {%- if loop.previtem and loop.previtem.role != "tool" %}
             {{- '<|im_start|>user\n' }}
@@ -147,7 +162,22 @@
             {{- '<|im_end|>\n' }}
         {%- endif %}
     {%- else %}
-        {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>\n' }}
+        {%- if message.content is string %}
+            {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>\n' }}
+        {%- elif message.content is iterable %}
+            {# Handle OpenAI v1.2+ array format #}
+            {%- set content_parts = [] %}
+            {%- for part in message.content %}
+                {%- if part is string %}
+                    {%- set _ = content_parts.append(part) %}
+                {%- elif part is mapping and part.type == "text" %}
+                    {%- set _ = content_parts.append(part.text) %}
+                {%- endif %}
+            {%- endfor %}
+            {{- '<|im_start|>' + message.role + '\n' + content_parts | join('') + '<|im_end|>\n' }}
+        {%- else %}
+            {{- '<|im_start|>' + message.role + '\n' + (message.content | string) + '<|im_end|>\n' }}
+        {%- endif %}
     {%- endif %}
 {%- endfor %}
 {%- if add_generation_prompt %}
