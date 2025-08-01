@@ -84,6 +84,9 @@ class Qwen3APIServer:
         self.tool_validator = get_tool_validator()
         self.gpu_monitor = get_gpu_monitor()
         
+        # Download tracking
+        self.download_status = {}
+        
         # Load active model
         active_model = self.config.get("active_model")
         if active_model:
@@ -194,6 +197,22 @@ class Qwen3APIServer:
         async def switch_model(request: ModelSwitchRequest):
             """Switch to a different model"""
             try:
+                # Check if model is downloaded first
+                model_config = self.config["models"].get(request.model_id)
+                if not model_config:
+                    raise HTTPException(status_code=404, detail=f"Model {request.model_id} not found in config")
+                
+                from utils.model_utils import is_model_downloaded
+                if not is_model_downloaded(model_config["name"], self.config["download_path"]):
+                    # Model not downloaded - start download in background
+                    background_tasks.add_task(self._download_model_background, request.model_id)
+                    return {
+                        "status": "downloading", 
+                        "message": f"Model {request.model_id} is being downloaded. Use /admin/download_status to check progress.",
+                        "model_id": request.model_id
+                    }
+                
+                # Model is downloaded, try to load it
                 success = self.model_manager.load_model_by_id(request.model_id)
                 if success:
                     self.config["active_model"] = request.model_id
@@ -227,6 +246,63 @@ class Qwen3APIServer:
             except Exception as e:
                 logger.error(f"GPU usage error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/admin/download_model")
+        async def download_model(request: ModelSwitchRequest):
+            """Download a model on-demand"""
+            try:
+                # Check if model is already downloaded
+                model_config = self.config["models"].get(request.model_id)
+                if not model_config:
+                    raise HTTPException(status_code=404, detail=f"Model {request.model_id} not found in config")
+                
+                from utils.model_utils import is_model_downloaded
+                if is_model_downloaded(model_config["name"], self.config["download_path"]):
+                    return {"status": "success", "message": f"Model {request.model_id} is already downloaded"}
+                
+                # Start download in background
+                background_tasks.add_task(self._download_model_background, request.model_id)
+                
+                return {
+                    "status": "started", 
+                    "message": f"Download started for {request.model_id}",
+                    "model_id": request.model_id
+                }
+                    
+            except Exception as e:
+                logger.error(f"Download error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/admin/download_status")
+        async def download_status():
+            """Get download status for all models"""
+            try:
+                return self.download_status
+            except Exception as e:
+                logger.error(f"Download status error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+    
+    async def _download_model_background(self, model_id: str):
+        """Download a model in the background"""
+        try:
+            self.download_status[model_id] = {"status": "downloading", "progress": 0}
+            
+            # Create a temporary model manager for downloading
+            temp_manager = get_model_manager(self.config)
+            
+            # Download the model
+            success = temp_manager.download_model(model_id)
+            
+            if success:
+                self.download_status[model_id] = {"status": "completed", "progress": 100}
+                logger.info(f"Model {model_id} downloaded successfully")
+            else:
+                self.download_status[model_id] = {"status": "failed", "progress": 0}
+                logger.error(f"Failed to download model {model_id}")
+                
+        except Exception as e:
+            self.download_status[model_id] = {"status": "failed", "progress": 0, "error": str(e)}
+            logger.error(f"Download error for {model_id}: {e}")
     
     def _create_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
         """Create prompt from messages and tools"""
