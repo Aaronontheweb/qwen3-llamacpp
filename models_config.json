@@ -97,6 +97,8 @@
   "server": {
     "host": "127.0.0.1",
     "port": 8080,
-    "log_level": "INFO"
+    "log_level": "INFO",
+    "use_jinja_template": true,
+    "template_dir": "templates"
   }
 } 

@@ -9,12 +9,14 @@ import time
 import uuid
 from typing import Dict, List, Optional, Any, Generator, Union
 from datetime import datetime
+import os
 
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from utils.logging_config import setup_logging
 from utils.gpu_monitor import get_gpu_monitor
@@ -77,6 +79,43 @@ class ModelInfo(BaseModel):
     created: int = Field(..., description="Creation timestamp")
     owned_by: str = Field("qwen3-server", description="Model owner")
 
+
+class TemplateManager:
+    """Manages Jinja2 templates for prompt generation"""
+    
+    def __init__(self, template_dir: str = "templates"):
+        self.template_dir = template_dir
+        self.env = Environment(
+            loader=FileSystemLoader(template_dir),
+            autoescape=select_autoescape(['html', 'xml'])
+        )
+        
+        try:
+            self.tool_template = self.env.get_template('qwen_tool_calling.j2')
+            logger.info(f"Loaded Jinja template from {template_dir}/qwen_tool_calling.j2")
+        except Exception as e:
+            logger.error(f"Failed to load Jinja template: {e}")
+            self.tool_template = None
+    
+    def render_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None, add_generation_prompt: bool = True) -> str:
+        """Render prompt using Jinja template"""
+        if not self.tool_template:
+            raise RuntimeError("Jinja template not loaded")
+        
+        try:
+            return self.tool_template.render(
+                messages=messages,
+                tools=tools,
+                add_generation_prompt=add_generation_prompt
+            )
+        except Exception as e:
+            logger.error(f"Template rendering failed: {e}")
+            raise RuntimeError(f"Template rendering failed: {e}")
+    
+    def is_available(self) -> bool:
+        """Check if template system is available"""
+        return self.tool_template is not None
+
 class Qwen3APIServer:
     """OpenAI-compatible API server for Qwen3 models"""
     
@@ -88,6 +127,10 @@ class Qwen3APIServer:
         self.tool_parser = get_tool_parser()
         self.tool_validator = get_tool_validator()
         self.gpu_monitor = get_gpu_monitor()
+        
+        # Initialize template manager
+        template_dir = self.config.get("server", {}).get("template_dir", "templates")
+        self.template_manager = TemplateManager(template_dir)
         
         # Download tracking
         self.download_status = {}
@@ -344,7 +387,20 @@ class Qwen3APIServer:
             logger.error(f"Download error for {model_id}: {e}")
     
     def _create_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
-        """Create prompt from messages and tools"""
+        """Create prompt from messages and tools using Jinja template or legacy method"""
+        use_jinja = self.config.get("server", {}).get("use_jinja_template", True)
+        
+        if use_jinja and self.template_manager.is_available():
+            try:
+                return self.template_manager.render_prompt(messages, tools, add_generation_prompt=True)
+            except Exception as e:
+                logger.warning(f"Jinja template failed, falling back to legacy: {e}")
+                return self._create_prompt_legacy(messages, tools)
+        else:
+            return self._create_prompt_legacy(messages, tools)
+    
+    def _create_prompt_legacy(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
+        """Legacy prompt creation method (fallback)"""
         prompt_parts = []
         
         # Add system message if present
@@ -438,29 +494,29 @@ class Qwen3APIServer:
             raise
     
     def _generate_stream(self, prompt: str, generation_params: Dict) -> Generator[str, None, None]:
-        """Generate streaming response with tool call support"""
+        """Generate streaming response with optimized tool call detection"""
         try:
             # Add streaming parameter
             generation_params["stream"] = True
             
-            # Buffer for accumulating chunks to detect tool calls
+            # Simplified buffer strategy - Jinja template ensures predictable format
             buffer = ""
             tool_emitted = False
             
             # Generate with streaming
             for chunk in self.backend.generate_stream(prompt, **generation_params):
-                # Accumulate into buffer to detect tool calls that may span chunks
+                # Accumulate into buffer for tool call detection
                 buffer += chunk
                 
-                # Try to parse tool calls on the current buffer
+                # Check for complete tool calls in buffer
                 tool_calls = self.tool_parser.extract_tool_calls(buffer)
                 
                 if tool_calls and not tool_emitted:
-                    # Clean the visible text (strip tool XML etc.) for any prior content
+                    # Extract clean visible text before tool calls
                     visible = self.tool_parser.clean_text(buffer)
                     
-                    # First, flush any visible content that was produced before the tool call
-                    if visible:
+                    # Emit any preceding content
+                    if visible.strip():
                         content_frame = {
                             "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                             "object": "chat.completion.chunk",
@@ -474,7 +530,7 @@ class Qwen3APIServer:
                         }
                         yield f"data: {json.dumps(content_frame)}\n\n"
                     
-                    # Emit tool-calls as an OpenAI 1.2 delta
+                    # Emit tool calls (Jinja template should ensure only one call set per response)
                     tc_frame = {
                         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                         "object": "chat.completion.chunk",
@@ -483,44 +539,45 @@ class Qwen3APIServer:
                         "choices": [{
                             "index": 0,
                             "delta": {"tool_calls": tool_calls},
-                            "finish_reason": None
+                            "finish_reason": "tool_calls"
                         }]
                     }
                     yield f"data: {json.dumps(tc_frame)}\n\n"
                     
                     tool_emitted = True
-                    # Reset buffer after emitting (we've flushed both visible text and tool calls)
-                    buffer = ""
+                    buffer = ""  # Clear buffer after tool emission
                     continue
                 
-                # If no tool-calls were found, stream the chunk as text
-                text_frame = {
+                # Stream text chunks normally when no tool calls detected
+                if not tool_emitted:
+                    text_frame = {
+                        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": self.config.get("active_model", "unknown"),
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk},
+                            "finish_reason": None
+                        }]
+                    }
+                    yield f"data: {json.dumps(text_frame)}\n\n"
+            
+            # Send final chunk only if no tool calls were emitted
+            if not tool_emitted:
+                final_chunk = {
                     "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": self.config.get("active_model", "unknown"),
                     "choices": [{
                         "index": 0,
-                        "delta": {"content": chunk},
-                        "finish_reason": None
+                        "delta": {},
+                        "finish_reason": "stop"
                     }]
                 }
-                yield f"data: {json.dumps(text_frame)}\n\n"
+                yield f"data: {json.dumps(final_chunk)}\n\n"
             
-            # Send final chunk
-            final_chunk = {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": self.config.get("active_model", "unknown"),
-                "choices": [{
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop"
-                }]
-            }
-            
-            yield f"data: {json.dumps(final_chunk)}\n\n"
             yield "data: [DONE]\n\n"
             
         except Exception as e:
