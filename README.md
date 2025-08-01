@@ -13,6 +13,18 @@ A configurable, standalone server for running Unsloth Qwen3 instruction-followin
 - **Comprehensive Logging**: Detailed logging with rotation and error tracking
 - **GPU Monitoring**: Real-time GPU memory and utilization tracking
 
+## ⚡ Quick Diagnostic
+
+**If you're experiencing 100% CPU usage and 0% GPU usage:**
+
+```bash
+# Check if CUDA support is working
+python -c "import llama_cpp; print('CUDA support:', hasattr(llama_cpp.llama_cpp, 'llama_supports_cuda') and llama_cpp.llama_cpp.llama_supports_cuda())"
+
+# If False, install with CUDA support:
+CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install llama-cpp-python --upgrade
+```
+
 ## 🏗️ Architecture
 
 ### Core Components
@@ -59,6 +71,10 @@ qwen3-server/
 
 ## 🛠️ Installation
 
+### ⚠️ **CRITICAL: CUDA Support Required**
+
+**If you see 100% CPU usage and 0% GPU usage, you need to reinstall llama-cpp-python with CUDA support!**
+
 1. **Clone the repository**:
    ```bash
    git clone <repository-url>
@@ -71,15 +87,25 @@ qwen3-server/
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Install dependencies**:
+3. **Install dependencies** (llama-cpp-python excluded - see step 4):
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Install llama-cpp-python with CUDA support**:
+4. **🚨 CRITICAL: Install llama-cpp-python with CUDA support**:
    ```bash
-   CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python
+   # Install with CUDA support (not included in requirements.txt)
+CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install llama-cpp-python --upgrade
    ```
+
+5. **Verify CUDA support is working**:
+   ```bash
+   python -c "import llama_cpp; print('CUDA support available:', hasattr(llama_cpp.llama_cpp, 'llama_supports_cuda') and llama_cpp.llama_cpp.llama_supports_cuda())"
+   ```
+   
+   **Expected output**: `CUDA support available: True`
+   
+   **If you see `False` or an error, CUDA support is not working!**
 
 ## ⚙️ Configuration
 
@@ -339,12 +365,28 @@ python model_manager.py check qwen3-30b-instruct
 ```
 
 #### CUDA/GPU Issues
+
+**Problem**: 100% CPU usage, 0% GPU usage during inference
+
+**Solution**: Install llama-cpp-python with CUDA support:
+```bash
+# Install with CUDA support
+CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install llama-cpp-python --upgrade
+
+# Verify CUDA support
+python -c "import llama_cpp; print('CUDA support available:', hasattr(llama_cpp.llama_cpp, 'llama_supports_cuda') and llama_cpp.llama_cpp.llama_supports_cuda())"
+```
+
+**Other GPU checks**:
 ```bash
 # Verify CUDA installation
 python -c "import torch; print(torch.cuda.is_available())"
 
 # Check GPU devices
 nvidia-smi
+
+# Check if llama.cpp can see CUDA
+python -c "import llama_cpp; print('Available functions:', [x for x in dir(llama_cpp.llama_cpp) if 'cuda' in x.lower()])"
 ```
 
 #### Download Issues

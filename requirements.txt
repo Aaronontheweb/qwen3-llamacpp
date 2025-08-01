@@ -1,5 +1,7 @@
 # Core dependencies for multi-GPU Qwen3 server
-llama-cpp-python>=0.2.40
+# NOTE: llama-cpp-python is installed separately with CUDA support
+# DO NOT install from requirements.txt - see installation instructions
+# llama-cpp-python>=0.2.40
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.5.0
