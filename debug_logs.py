@@ -17,33 +17,52 @@ def extract_debug_sections(log_file_path):
         print(f"❌ Log file not found: {log_file_path}")
         return
     
-    # Find all debug sections
+    # Find all debug sections (updated for new log patterns)
     sections = {
-        'requests': re.findall(r'=== CHAT COMPLETION REQUEST ===(.*?)(?==== |$)', content, re.DOTALL),
-        'prompts': re.findall(r'=== GENERATED PROMPT ===(.*?)(?==== |$)', content, re.DOTALL),
+        'requests': re.findall(r'=== NEW REQUEST ===(.*?)(?==== |$)', content, re.DOTALL),
+        'prompts': re.findall(r'=== PROMPT READY ===(.*?)(?==== |$)', content, re.DOTALL),
         'responses': re.findall(r'=== RAW MODEL RESPONSE ===(.*?)(?==== |$)', content, re.DOTALL),
         'parsing': re.findall(r'=== PARSING RESULTS ===(.*?)(?==== |$)', content, re.DOTALL),
-        'final': re.findall(r'=== FINAL RESPONSE ===(.*?)(?==== |$)', content, re.DOTALL)
+        'final': re.findall(r'=== RESPONSE SENT ===(.*?)(?==== |$)', content, re.DOTALL),
+        'generation': re.findall(r'=== GENERATION ===(.*?)(?==== |$)', content, re.DOTALL),
+        'backend_calls': re.findall(r'=== CALLING backend\.generate ===(.*?)(?==== |$)', content, re.DOTALL),
+        'errors': re.findall(r'ERROR.*', content)
     }
     
     print(f"🔍 Debug Log Analysis")
     print(f"=" * 50)
     print(f"Found {len(sections['requests'])} requests")
+    print(f"Found {len(sections['generation'])} generation attempts")
+    print(f"Found {len(sections['backend_calls'])} backend calls")
     print(f"Found {len(sections['responses'])} model responses")
     print(f"Found {len(sections['parsing'])} parsing results")
+    print(f"Found {len(sections['errors'])} errors")
     
     # Show the most recent interaction
     if sections['requests']:
         print(f"\n📥 Most Recent Request:")
-        print(sections['requests'][-1][:500] + "..." if len(sections['requests'][-1]) > 500 else sections['requests'][-1])
+        print(sections['requests'][-1])
+    
+    if sections['generation']:
+        print(f"\n⚙️ Most Recent Generation Attempt:")
+        print(sections['generation'][-1])
+    
+    if sections['backend_calls']:
+        print(f"\n🔗 Backend Calls:")
+        print(f"Made {len(sections['backend_calls'])} calls to backend.generate")
     
     if sections['responses']:
         print(f"\n🤖 Most Recent Model Response:")
-        print(sections['responses'][-1][:500] + "..." if len(sections['responses'][-1]) > 500 else sections['responses'][-1])
+        print(sections['responses'][-1][:1000] + "..." if len(sections['responses'][-1]) > 1000 else sections['responses'][-1])
     
     if sections['parsing']:
         print(f"\n🔧 Most Recent Parsing Results:")
         print(sections['parsing'][-1])
+    
+    if sections['errors']:
+        print(f"\n❌ Recent Errors:")
+        for error in sections['errors'][-3:]:  # Show last 3 errors
+            print(f"  {error}")
     
     return sections
 
