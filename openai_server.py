@@ -225,6 +225,19 @@ class Qwen3APIServer:
         async def chat_completions(request: ChatCompletionRequest):
             """Chat completions endpoint"""
             try:
+                # Debug: Log full request
+                request_dump = {
+                    "model": request.model,
+                    "messages": [msg.model_dump() for msg in request.messages],
+                    "tools": [tool.model_dump() for tool in request.tools] if request.tools else None,
+                    "tool_choice": request.tool_choice,
+                    "temperature": request.temperature,
+                    "max_tokens": request.max_tokens,
+                    "stream": request.stream
+                }
+                logger.info(f"=== CHAT COMPLETION REQUEST ===")
+                logger.info(f"REQUEST: {json.dumps(request_dump, indent=2)}")
+                
                 # Check if model is loaded
                 if not self.backend.model:
                     raise HTTPException(status_code=503, detail="No model loaded")
@@ -236,9 +249,18 @@ class Qwen3APIServer:
                 tools = None
                 if request.tools:
                     tools = [tool.model_dump() for tool in request.tools]
+                    # Debug: Log tool names
+                    tool_names = [t.get("function", {}).get("name", "unknown") for t in tools]
+                    logger.info(f"Tools provided by client: {tool_names}")
                 
                 # Generate prompt
                 prompt = self._create_prompt(messages, tools)
+                
+                # Debug: Log generated prompt (truncated for readability)
+                logger.info(f"=== GENERATED PROMPT ===")
+                logger.info(f"PROMPT (first 500 chars): {prompt[:500]}...")
+                logger.info(f"PROMPT (last 500 chars): ...{prompt[-500:]}")
+                logger.info(f"PROMPT LENGTH: {len(prompt)} characters")
                 
                 # Check context window usage and warn if approaching limits
                 prompt_tokens = len(prompt.split())  # Approximate token count
@@ -457,9 +479,21 @@ class Qwen3APIServer:
             # Generate response
             response_text = self.backend.generate(prompt, **generation_params)
             
+            # Debug: Log raw model response
+            logger.info(f"=== RAW MODEL RESPONSE ===")
+            logger.info(f"RESPONSE: {repr(response_text)}")
+            
             # Parse tool calls
             tool_calls = self.tool_parser.extract_tool_calls(response_text)
             clean_text = self.tool_parser.clean_text(response_text)
+            
+            # Debug: Log parsing results
+            logger.info(f"=== PARSING RESULTS ===")
+            logger.info(f"TOOL CALLS FOUND: {len(tool_calls)}")
+            if tool_calls:
+                for i, tc in enumerate(tool_calls):
+                    logger.info(f"TOOL {i}: {json.dumps(tc, indent=2)}")
+            logger.info(f"CLEAN TEXT: {repr(clean_text)}")
             
             # Prepare choice
             choice = {
@@ -487,7 +521,12 @@ class Qwen3APIServer:
                 }
             )
             
-            return response.model_dump()
+            # Debug: Log final response
+            final_response = response.model_dump()
+            logger.info(f"=== FINAL RESPONSE ===")
+            logger.info(f"RESPONSE: {json.dumps(final_response, indent=2)}")
+            
+            return final_response
             
         except Exception as e:
             logger.error(f"Generation error: {e}")
