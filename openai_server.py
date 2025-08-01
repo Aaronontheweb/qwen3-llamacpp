@@ -268,11 +268,18 @@ class Qwen3APIServer:
                 logger.info(f"=== PROMPT READY ===")
                 logger.info(f"Prompt length: {len(prompt)} chars ({len(prompt.split())} tokens approx)")
                 
-                # Check context window usage and warn if approaching limits
+                # Check context window usage and adjust max_tokens if needed
                 prompt_tokens = len(prompt.split())  # Approximate token count
                 current_model_config = self.config["models"].get(self.config.get("active_model", ""), {})
                 effective_context = current_model_config.get("effective_context_tokens", 32768)
                 max_context = current_model_config.get("max_context_tokens", 262144)
+                
+                # Auto-adjust max_tokens to fit in context window
+                available_tokens = max_context - prompt_tokens - 100  # Reserve 100 tokens for safety
+                if request.max_tokens > available_tokens:
+                    original_max = request.max_tokens
+                    request.max_tokens = max(512, available_tokens)  # At least 512 tokens for response
+                    logger.warning(f"Reduced max_tokens from {original_max} to {request.max_tokens} to fit context window ({max_context} total, {prompt_tokens} prompt)")
                 
                 if prompt_tokens > effective_context:
                     logger.warning(f"Prompt length ({prompt_tokens} tokens) exceeds effective context window ({effective_context} tokens). Model performance may degrade.")
