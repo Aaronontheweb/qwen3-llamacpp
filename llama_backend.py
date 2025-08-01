@@ -84,36 +84,89 @@ class LlamaBackend:
             # Prepare llama.cpp settings
             settings = self.llama_settings.copy()
             
-            # Use maximum context window - let users decide based on their needs
-            # Note: Model effectiveness typically drops after training context length
-            # Qwen3 models are typically trained on 32k-128k context
-            settings["n_ctx"] = 262144  # 256k tokens - maximum supported
+            # Calculate context window based on available GPU memory
+            # Start with conservative values and adjust based on memory
+            total_memory_mb, available_memory_mb = self.gpu_monitor.get_total_gpu_memory()
+            logger.info(f"GPU Memory - Total: {total_memory_mb}MB, Available: {available_memory_mb}MB")
+            
+            # Conservative context window calculation
+            # For 30B models, we need to be more conservative
             if model_config.get("size") == "30B":
+                # Start with 32k context for 30B models
+                settings["n_ctx"] = 32768
                 settings["n_batch"] = 256
+                logger.info(f"30B model: Using conservative context window of 32k tokens")
             elif model_config.get("size") == "14B":
+                settings["n_ctx"] = 65536  # 64k tokens
                 settings["n_batch"] = 512
+                logger.info(f"14B model: Using context window of 64k tokens")
             else:  # 8B and smaller
+                settings["n_ctx"] = 131072  # 128k tokens
                 settings["n_batch"] = 1024
+                logger.info(f"Smaller model: Using context window of 128k tokens")
             
-            # Load model
+            # Log the settings being used
+            logger.info(f"Loading model with settings: n_ctx={settings['n_ctx']}, n_batch={settings['n_batch']}")
+            
+            # Load model with fallback to smaller context windows
             start_time = time.time()
-            self.model = Llama(
-                model_path=model_path,
-                **settings
-            )
-            load_time = time.time() - start_time
             
-            self.model_path = model_path
-            self.model_config = model_config
-            
-            logger.info(f"Model loaded successfully in {load_time:.2f}s")
-            logger.info(f"Model info: {self._get_model_info()}")
-            
-            # Log GPU memory status
-            self.gpu_monitor.log_memory_status()
-            
-            return True
-            
+            # Try loading with initial settings
+            try:
+                self.model = Llama(
+                    model_path=model_path,
+                    **settings
+                )
+                load_time = time.time() - start_time
+                
+                self.model_path = model_path
+                self.model_config = model_config
+                
+                logger.info(f"Model loaded successfully in {load_time:.2f}s")
+                logger.info(f"Model info: {self._get_model_info()}")
+                
+                # Log GPU memory status
+                self.gpu_monitor.log_memory_status()
+                
+                return True
+                
+            except Exception as e:
+                logger.warning(f"Failed to load with context window {settings['n_ctx']}: {e}")
+                
+                # Try with smaller context window for 30B models
+                if model_config.get("size") == "30B" and settings["n_ctx"] > 16384:
+                    logger.info("Retrying with smaller context window (16k)...")
+                    settings["n_ctx"] = 16384
+                    settings["n_batch"] = 128
+                    
+                    try:
+                        self.model = Llama(
+                            model_path=model_path,
+                            **settings
+                        )
+                        load_time = time.time() - start_time
+                        
+                        self.model_path = model_path
+                        self.model_config = model_config
+                        
+                        logger.info(f"Model loaded successfully with 16k context in {load_time:.2f}s")
+                        logger.info(f"Model info: {self._get_model_info()}")
+                        
+                        # Log GPU memory status
+                        self.gpu_monitor.log_memory_status()
+                        
+                        return True
+                        
+                    except Exception as e2:
+                        logger.error(f"Failed to load even with 16k context: {e2}")
+                
+                # If we get here, all attempts failed
+                logger.error(f"Failed to load model: {e}")
+                self.model = None
+                self.model_path = None
+                self.model_config = None
+                return False
+                
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             self.model = None

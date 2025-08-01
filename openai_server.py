@@ -533,12 +533,18 @@ def main():
     parser.add_argument("--host", help="Server host")
     parser.add_argument("--port", type=int, help="Server port")
     parser.add_argument("--model", help="Model ID to load")
+    parser.add_argument("--context-window", type=int, help="Override context window size (for debugging)")
     
     args = parser.parse_args()
     
     try:
         # Create server
         server = Qwen3APIServer(args.config)
+        
+        # Override context window if specified
+        if args.context_window:
+            logger.info(f"Overriding context window to {args.context_window} tokens")
+            server.backend.llama_settings["n_ctx"] = args.context_window
         
         # Load specific model if requested
         if args.model:
