@@ -36,11 +36,11 @@
         "top_p": 0.9
       }
     },
-    "qwen3-7b-instruct": {
-      "name": "TheBloke/Qwen3-7B-Instruct-GGUF",
+    "qwen3-8b-instruct": {
+      "name": "lm-kit/qwen-3-8b-instruct-gguf",
       "type": "instruction", 
       "size": "7B",
-      "quantization": "4bit",
+      "quantization": "8bit",
       "description": "Qwen3-7B instruction-tuned GGUF. Effective context: ~32k tokens, maximum supported: 131k tokens",
       "memory_estimate_gb": 5,
       "recommended_gpus": 1,
@@ -91,7 +91,7 @@
       }
     }
   },
-  "active_model": "qwen3-30b-instruct",
+  "active_model": "qwen3-8b-instruct",
   "download_path": "./models",
   "cache_dir": "./cache",
   "server": {
