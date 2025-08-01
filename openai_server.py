@@ -494,8 +494,13 @@ class Qwen3APIServer:
             
             # Generate response
             logger.info(f"=== CALLING backend.generate ===")
-            response_text = self.backend.generate(prompt, **generation_params)
-            logger.info(f"=== backend.generate COMPLETED ===")
+            try:
+                response_text = self.backend.generate(prompt, **generation_params)
+                logger.info(f"=== backend.generate COMPLETED ===")
+            except Exception as e:
+                logger.error(f"Backend generation failed: {e}")
+                logger.error(f"CUDA/Model error - backend may need restart")
+                raise
             
             # Debug: Log raw model response
             logger.info(f"=== RAW MODEL RESPONSE ===")
