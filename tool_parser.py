@@ -26,6 +26,12 @@ class Qwen3ToolParser:
         self.tool_call_parameter_regex = re.compile(
             r"<parameter=(.*?)</parameter>|<parameter=(.*?)$", re.DOTALL
         )
+        # Additional regex patterns to support Qwen's <function> style output (without <tool_call> wrapper)
+        self.function_block_regex = re.compile(r"<function>(.*?)</function>", re.DOTALL | re.IGNORECASE)
+        self.function_name_regex = re.compile(r"<name>(.*?)</name>", re.DOTALL | re.IGNORECASE)
+        self.param_block_regex = re.compile(r"<parameter>(.*?)</parameter>", re.DOTALL | re.IGNORECASE)
+        self.param_name_regex = re.compile(r"<name>(.*?)</name>", re.DOTALL | re.IGNORECASE)
+        self.param_value_regex = re.compile(r"<value>(.*?)</value>", re.DOTALL | re.IGNORECASE)
         
         # Track parsing statistics
         self.stats = {
@@ -37,41 +43,52 @@ class Qwen3ToolParser:
     
     def extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
         """
-        Extract tool calls from Qwen3 response text
-        
-        Args:
-            text: Response text containing XML tool calls
-            
-        Returns:
-            List of OpenAI-compatible tool call dictionaries
+        Extract tool calls from Qwen3 response text. Handles both the legacy
+        `<tool_call>...</tool_call>` wrapper as well as the newer Qwen style
+        that emits standalone `<function>...</function>` blocks.
         """
         if not text:
             return []
-        
-        tool_calls = []
-        
-        # Find all tool call blocks
+
+        tool_calls: List[Dict[str, Any]] = []
+
+        # ------------------------------------------------------------------
+        # Legacy: <tool_call> wrapper blocks
+        # ------------------------------------------------------------------
         tool_call_matches = self.tool_call_regex.findall(text)
-        
         for match in tool_call_matches:
-            # Handle both complete and incomplete matches
             tool_call_content = match[0] if match[0] else match[1]
-            
             if not tool_call_content.strip():
                 continue
-            
             try:
-                tool_call = self._parse_xml_function_call(tool_call_content)
-                if tool_call:
-                    tool_calls.append(tool_call)
+                tc = self._parse_xml_function_call(tool_call_content)
+                if tc:
+                    tool_calls.append(tc)
                     self.stats["successful_parses"] += 1
                 else:
                     self.stats["failed_parses"] += 1
-                    
             except Exception as e:
-                logger.warning(f"Failed to parse tool call: {e}")
+                logger.warning(f"Failed to parse <tool_call> block: {e}")
                 self.stats["malformed_xml"] += 1
-        
+
+        # ------------------------------------------------------------------
+        # Current Qwen style: standalone <function> blocks
+        # ------------------------------------------------------------------
+        function_blocks = self.function_block_regex.findall(text)
+        for func_content in function_blocks:
+            if not func_content.strip():
+                continue
+            try:
+                tc = self._parse_function_block(func_content)
+                if tc:
+                    tool_calls.append(tc)
+                    self.stats["successful_parses"] += 1
+                else:
+                    self.stats["failed_parses"] += 1
+            except Exception as e:
+                logger.warning(f"Failed to parse <function> block: {e}")
+                self.stats["malformed_xml"] += 1
+
         self.stats["total_calls"] += len(tool_calls)
         return tool_calls
     
@@ -130,6 +147,44 @@ class Qwen3ToolParser:
             logger.error(f"Error parsing XML function call: {e}")
             return None
     
+    def _parse_function_block(self, func_xml: str) -> Optional[Dict[str, Any]]:
+        """
+        Parse a <function>...</function> block into an OpenAI-compatible tool
+        call dictionary.
+        """
+        try:
+            name_match = self.function_name_regex.search(func_xml)
+            if not name_match:
+                logger.warning("No function <name> found in function block")
+                return None
+            function_name = name_match.group(1).strip()
+
+            parameters: Dict[str, Any] = {}
+            param_blocks = self.param_block_regex.findall(func_xml)
+            for param_xml in param_blocks:
+                pname_match = self.param_name_regex.search(param_xml)
+                pvalue_match = self.param_value_regex.search(param_xml)
+
+                if not pname_match or not pvalue_match:
+                    continue
+
+                param_name = pname_match.group(1).strip()
+                param_value_raw = pvalue_match.group(1).strip()
+                parameters[param_name] = self._convert_param_value(param_value_raw)
+
+            tool_call = {
+                "id": f"call_{uuid.uuid4().hex[:8]}",
+                "type": "function",
+                "function": {
+                    "name": function_name,
+                    "arguments": json.dumps(parameters, ensure_ascii=False)
+                }
+            }
+            return tool_call
+        except Exception as e:
+            logger.error(f"Error parsing <function> block: {e}")
+            return None
+
     def _convert_param_value(self, value: str) -> Union[str, int, float, bool, None]:
         """
         Convert parameter value to appropriate type
