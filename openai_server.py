@@ -204,7 +204,7 @@ class Qwen3APIServer:
                 if request.stream:
                     return StreamingResponse(
                         self._generate_stream(prompt, generation_params),
-                        media_type="text/plain"
+                        media_type="text/event-stream"
                     )
                 else:
                     return await self._generate_completion(prompt, generation_params, tools)
@@ -412,15 +412,63 @@ class Qwen3APIServer:
             raise
     
     def _generate_stream(self, prompt: str, generation_params: Dict) -> Generator[str, None, None]:
-        """Generate streaming response"""
+        """Generate streaming response with tool call support"""
         try:
             # Add streaming parameter
             generation_params["stream"] = True
             
+            # Buffer for accumulating chunks to detect tool calls
+            buffer = ""
+            tool_emitted = False
+            
             # Generate with streaming
             for chunk in self.backend.generate_stream(prompt, **generation_params):
-                # Create streaming response chunk
-                chunk_data = {
+                # Accumulate into buffer to detect tool calls that may span chunks
+                buffer += chunk
+                
+                # Try to parse tool calls on the current buffer
+                tool_calls = self.tool_parser.extract_tool_calls(buffer)
+                
+                if tool_calls and not tool_emitted:
+                    # Clean the visible text (strip tool XML etc.) for any prior content
+                    visible = self.tool_parser.clean_text(buffer)
+                    
+                    # First, flush any visible content that was produced before the tool call
+                    if visible:
+                        content_frame = {
+                            "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": self.config.get("active_model", "unknown"),
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": visible},
+                                "finish_reason": None
+                            }]
+                        }
+                        yield f"data: {json.dumps(content_frame)}\n\n"
+                    
+                    # Emit tool-calls as an OpenAI 1.2 delta
+                    tc_frame = {
+                        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": self.config.get("active_model", "unknown"),
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"tool_calls": tool_calls},
+                            "finish_reason": None
+                        }]
+                    }
+                    yield f"data: {json.dumps(tc_frame)}\n\n"
+                    
+                    tool_emitted = True
+                    # Reset buffer after emitting (we've flushed both visible text and tool calls)
+                    buffer = ""
+                    continue
+                
+                # If no tool-calls were found, stream the chunk as text
+                text_frame = {
                     "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
@@ -431,8 +479,7 @@ class Qwen3APIServer:
                         "finish_reason": None
                     }]
                 }
-                
-                yield f"data: {json.dumps(chunk_data)}\n\n"
+                yield f"data: {json.dumps(text_frame)}\n\n"
             
             # Send final chunk
             final_chunk = {
