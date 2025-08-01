@@ -84,28 +84,41 @@ class LlamaBackend:
             # Prepare llama.cpp settings
             settings = self.llama_settings.copy()
             
-            # Calculate context window based on available GPU memory
-            # Start with conservative values and adjust based on memory
+            # Dynamically estimate context window based on available GPU memory
             total_memory_mb, available_memory_mb = self.gpu_monitor.get_total_gpu_memory()
             logger.info(f"GPU Memory - Total: {total_memory_mb}MB, Available: {available_memory_mb}MB")
+
+            # Heuristic: KV-cache memory per 1k tokens (MB)
+            kv_mb_per_1k = {
+                "30B": 1.3,
+                "14B": 0.6,
+                "7B": 0.3,
+                "4B": 0.2
+            }
+            model_size = model_config.get("size", "7B")
+            kv_per_1k = kv_mb_per_1k.get(model_size, 0.3)
+
+            # Reserve 70% of free memory for KV-cache to leave room for weights & overhead
+            kv_budget_mb = int(available_memory_mb * 0.7)
+            max_tokens_estimate = int((kv_budget_mb / kv_per_1k) * 1000)  # tokens
+            # Round down to nearest 1024 for safety
+            max_tokens_estimate = (max_tokens_estimate // 1024) * 1024
+
+            # Respect a hard upper cap (model training context or llama.cpp max)
+            hard_cap = model_config.get("max_context_tokens", 262144)
+            estimated_ctx = max(4096, min(max_tokens_estimate, hard_cap))
+
+            settings["n_ctx"] = estimated_ctx
+            logger.info(f"Estimated context window based on GPU memory: {estimated_ctx} tokens (model size {model_size})")
             
-            # Conservative context window calculation
-            # For 30B models, we need to be more conservative
-            if model_config.get("size") == "30B":
-                # Start with 32k context for 30B models
-                settings["n_ctx"] = 32768
+            # Adjust batch size crudely based on model size
+            if model_size == "30B":
                 settings["n_batch"] = 256
-                logger.info(f"30B model: Using conservative context window of 32k tokens")
-            elif model_config.get("size") == "14B":
-                settings["n_ctx"] = 65536  # 64k tokens
+            elif model_size == "14B":
                 settings["n_batch"] = 512
-                logger.info(f"14B model: Using context window of 64k tokens")
-            else:  # 8B and smaller
-                settings["n_ctx"] = 131072  # 128k tokens
+            else:
                 settings["n_batch"] = 1024
-                logger.info(f"Smaller model: Using context window of 128k tokens")
             
-            # Log the settings being used
             logger.info(f"Loading model with settings: n_ctx={settings['n_ctx']}, n_batch={settings['n_batch']}")
             
             # Load model with fallback to smaller context windows
