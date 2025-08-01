@@ -274,6 +274,14 @@ class Qwen3APIServer:
                 effective_context = current_model_config.get("effective_context_tokens", 32768)
                 max_context = current_model_config.get("max_context_tokens", 262144)
                 
+                # Check actual runtime context from loaded model
+                if hasattr(self.backend, 'model') and self.backend.model:
+                    actual_context = self.backend.model.n_ctx()
+                    logger.info(f"Model runtime context: {actual_context} tokens (config says {max_context})")
+                    if actual_context < max_context:
+                        logger.warning(f"Model loaded with reduced context ({actual_context}) due to memory constraints")
+                        max_context = actual_context  # Use the actual context, not config
+                
                 # Auto-adjust max_tokens to fit in context window
                 available_tokens = max_context - prompt_tokens - 100  # Reserve 100 tokens for safety
                 if request.max_tokens > available_tokens:

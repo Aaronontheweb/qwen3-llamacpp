@@ -92,16 +92,17 @@ class LlamaBackend:
             # Approximate KV-cache memory cost per 1k tokens (MB).  Values are deliberately high-side
             # to stay within GPU memory when multiple tensors are resident.
             kv_mb_per_1k = {
-                "30B": 1300,   # ~1.3 GB / 1k tokens
-                "14B": 600,    # ~0.6 GB / 1k tokens
-                "7B": 270,     # ~0.27 GB / 1k tokens
-                "4B": 130      # ~0.13 GB / 1k tokens
+                "30B": 800,    # ~0.8 GB / 1k tokens (reduced from 1.3GB - was too conservative)
+                "14B": 400,    # ~0.4 GB / 1k tokens (reduced from 0.6GB)
+                "7B": 200,     # ~0.2 GB / 1k tokens (reduced from 0.27GB)
+                "4B": 100      # ~0.1 GB / 1k tokens (reduced from 0.13GB)
             }
             model_size = model_config.get("size", "7B")
             kv_per_1k = kv_mb_per_1k.get(model_size, 300)  # fallback 0.3 GB per 1k tokens
 
             # Reserve 70% of free memory for KV-cache to leave room for weights & overhead
             kv_budget_mb = int(available_memory_mb * 0.7)
+            logger.info(f"KV-cache budget: {kv_budget_mb}MB (from {available_memory_mb}MB available)")
             max_tokens_estimate = int((kv_budget_mb / kv_per_1k) * 1000)  # tokens
             # Round down to nearest 1024 for safety
             max_tokens_estimate = (max_tokens_estimate // 1024) * 1024
