@@ -133,6 +133,14 @@ class LlamaBackend:
             except Exception as e:
                 logger.warning(f"Failed to load with context window {settings['n_ctx']}: {e}")
                 
+                # Clean up failed attempt
+                if hasattr(self, 'model') and self.model is not None:
+                    try:
+                        del self.model
+                    except:
+                        pass
+                    self.model = None
+                
                 # Try with smaller context window for 30B models
                 if model_config.get("size") == "30B" and settings["n_ctx"] > 16384:
                     logger.info("Retrying with smaller context window (16k)...")
@@ -159,6 +167,13 @@ class LlamaBackend:
                         
                     except Exception as e2:
                         logger.error(f"Failed to load even with 16k context: {e2}")
+                        # Clean up second failed attempt
+                        if hasattr(self, 'model') and self.model is not None:
+                            try:
+                                del self.model
+                            except:
+                                pass
+                            self.model = None
                 
                 # If we get here, all attempts failed
                 logger.error(f"Failed to load model: {e}")
