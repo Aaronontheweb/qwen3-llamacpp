@@ -9,12 +9,14 @@ import time
 import uuid
 from typing import Dict, List, Optional, Any, Generator, Union
 from datetime import datetime
+import os
 
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from utils.logging_config import setup_logging
 from utils.gpu_monitor import get_gpu_monitor
@@ -55,7 +57,7 @@ class ChatCompletionRequest(BaseModel):
     
     tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(None, description='Tool choice ("auto", "none", or specific function)')
     temperature: Optional[float] = Field(0.7, description="Sampling temperature")
-    max_tokens: Optional[int] = Field(2048, description="Maximum tokens to generate")
+    max_tokens: Optional[int] = Field(4096, description="Maximum tokens to generate")
     top_p: Optional[float] = Field(0.9, description="Top-p sampling")
     stream: Optional[bool] = Field(False, description="Stream response")
     stop: Optional[List[str]] = Field(None, description="Stop sequences")
@@ -77,10 +79,50 @@ class ModelInfo(BaseModel):
     created: int = Field(..., description="Creation timestamp")
     owned_by: str = Field("qwen3-server", description="Model owner")
 
+
+class TemplateManager:
+    """Manages Jinja2 templates for prompt generation"""
+    
+    def __init__(self, template_dir: str = "templates"):
+        self.template_dir = template_dir
+        self.env = Environment(
+            loader=FileSystemLoader(template_dir),
+            autoescape=select_autoescape(['html', 'xml'])
+        )
+        
+        try:
+            self.tool_template = self.env.get_template('qwen_tool_calling.j2')
+            logger.info(f"Loaded Jinja template from {template_dir}/qwen_tool_calling.j2")
+        except Exception as e:
+            logger.error(f"Failed to load Jinja template: {e}")
+            self.tool_template = None
+    
+    def render_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None, add_generation_prompt: bool = True) -> str:
+        """Render prompt using Jinja template"""
+        if not self.tool_template:
+            raise RuntimeError("Jinja template not loaded")
+        
+        try:
+            return self.tool_template.render(
+                messages=messages,
+                tools=tools,
+                add_generation_prompt=add_generation_prompt
+            )
+        except Exception as e:
+            logger.error(f"Template rendering failed: {e}")
+            raise RuntimeError(f"Template rendering failed: {e}")
+    
+    def is_available(self) -> bool:
+        """Check if template system is available"""
+        return self.tool_template is not None
+
 class Qwen3APIServer:
     """OpenAI-compatible API server for Qwen3 models"""
     
     def __init__(self, config_path: str = "models_config.json"):
+        # Clear server logs on startup for cleaner debugging
+        self._clear_server_logs()
+        
         self.config_path = config_path
         self.config = self._load_config()
         self.model_manager = get_model_manager(self.config)
@@ -88,6 +130,10 @@ class Qwen3APIServer:
         self.tool_parser = get_tool_parser()
         self.tool_validator = get_tool_validator()
         self.gpu_monitor = get_gpu_monitor()
+        
+        # Initialize template manager
+        template_dir = self.config.get("server", {}).get("template_dir", "templates")
+        self.template_manager = TemplateManager(template_dir)
         
         # Download tracking
         self.download_status = {}
@@ -129,6 +175,18 @@ class Qwen3APIServer:
         
         # Set up routes
         self._setup_routes()
+    
+    def _clear_server_logs(self):
+        """Clear server logs on startup for cleaner debugging"""
+        import os
+        log_files = ["logs/qwen3_server.log", "debug_dump.json"]
+        for log_file in log_files:
+            try:
+                if os.path.exists(log_file):
+                    os.remove(log_file)
+                    print(f"🧹 Cleared {log_file}")
+            except Exception as e:
+                print(f"⚠️  Could not clear {log_file}: {e}")
     
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration file"""
@@ -182,6 +240,12 @@ class Qwen3APIServer:
         async def chat_completions(request: ChatCompletionRequest):
             """Chat completions endpoint"""
             try:
+                # Debug: Log essential request info only
+                tool_names = [t.function.name for t in request.tools] if request.tools else []
+                logger.info(f"=== NEW REQUEST ===")
+                logger.info(f"Tools available: {tool_names}")
+                logger.info(f"Stream: {request.stream}, Max tokens: {request.max_tokens}")
+                
                 # Check if model is loaded
                 if not self.backend.model:
                     raise HTTPException(status_code=503, detail="No model loaded")
@@ -193,15 +257,37 @@ class Qwen3APIServer:
                 tools = None
                 if request.tools:
                     tools = [tool.model_dump() for tool in request.tools]
+                    # Debug: Log tool names
+                    tool_names = [t.get("function", {}).get("name", "unknown") for t in tools]
+                    logger.info(f"Tools provided by client: {tool_names}")
                 
                 # Generate prompt
                 prompt = self._create_prompt(messages, tools)
                 
-                # Check context window usage and warn if approaching limits
+                # Debug: Log prompt length only
+                logger.info(f"=== PROMPT READY ===")
+                logger.info(f"Prompt length: {len(prompt)} chars ({len(prompt.split())} tokens approx)")
+                
+                # Check context window usage and adjust max_tokens if needed
                 prompt_tokens = len(prompt.split())  # Approximate token count
                 current_model_config = self.config["models"].get(self.config.get("active_model", ""), {})
                 effective_context = current_model_config.get("effective_context_tokens", 32768)
                 max_context = current_model_config.get("max_context_tokens", 262144)
+                
+                # Check actual runtime context from loaded model
+                if hasattr(self.backend, 'model') and self.backend.model:
+                    actual_context = self.backend.model.n_ctx()
+                    logger.info(f"Model runtime context: {actual_context} tokens (config says {max_context})")
+                    if actual_context < max_context:
+                        logger.warning(f"Model loaded with reduced context ({actual_context}) due to memory constraints")
+                        max_context = actual_context  # Use the actual context, not config
+                
+                # Auto-adjust max_tokens to fit in context window
+                available_tokens = max_context - prompt_tokens - 100  # Reserve 100 tokens for safety
+                if request.max_tokens > available_tokens:
+                    original_max = request.max_tokens
+                    request.max_tokens = max(512, available_tokens)  # At least 512 tokens for response
+                    logger.warning(f"Reduced max_tokens from {original_max} to {request.max_tokens} to fit context window ({max_context} total, {prompt_tokens} prompt)")
                 
                 if prompt_tokens > effective_context:
                     logger.warning(f"Prompt length ({prompt_tokens} tokens) exceeds effective context window ({effective_context} tokens). Model performance may degrade.")
@@ -216,16 +302,22 @@ class Qwen3APIServer:
                     "top_p": request.top_p,
                 }
                 
+                # Debug: Log key generation parameters
+                logger.info(f"=== GENERATION ===")
+                logger.info(f"Max tokens: {request.max_tokens}, Temp: {request.temperature}")
+                
                 if request.stop:
                     generation_params["stop"] = request.stop
                 
                 # Generate response
                 if request.stream:
+                    logger.info(f"=== USING STREAMING RESPONSE ===")
                     return StreamingResponse(
                         self._generate_stream(prompt, generation_params),
                         media_type="text/event-stream"
                     )
                 else:
+                    logger.info(f"=== USING NON-STREAMING RESPONSE ===")
                     return await self._generate_completion(prompt, generation_params, tools)
                     
             except Exception as e:
@@ -344,7 +436,20 @@ class Qwen3APIServer:
             logger.error(f"Download error for {model_id}: {e}")
     
     def _create_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
-        """Create prompt from messages and tools"""
+        """Create prompt from messages and tools using Jinja template or legacy method"""
+        use_jinja = self.config.get("server", {}).get("use_jinja_template", True)
+        
+        if use_jinja and self.template_manager.is_available():
+            try:
+                return self.template_manager.render_prompt(messages, tools, add_generation_prompt=True)
+            except Exception as e:
+                logger.warning(f"Jinja template failed, falling back to legacy: {e}")
+                return self._create_prompt_legacy(messages, tools)
+        else:
+            return self._create_prompt_legacy(messages, tools)
+    
+    def _create_prompt_legacy(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
+        """Legacy prompt creation method (fallback)"""
         prompt_parts = []
         
         # Add system message if present
@@ -398,12 +503,35 @@ class Qwen3APIServer:
     async def _generate_completion(self, prompt: str, generation_params: Dict, tools: Optional[List[Dict]] = None) -> ChatCompletionResponse:
         """Generate a single completion"""
         try:
+            # Debug: Log entry into completion function
+            logger.info(f"=== ENTERING _generate_completion ===")
+            logger.info(f"Generation params: {generation_params}")
+            
             # Generate response
-            response_text = self.backend.generate(prompt, **generation_params)
+            logger.info(f"=== CALLING backend.generate ===")
+            try:
+                response_text = self.backend.generate(prompt, **generation_params)
+                logger.info(f"=== backend.generate COMPLETED ===")
+            except Exception as e:
+                logger.error(f"Backend generation failed: {e}")
+                logger.error(f"CUDA/Model error - backend may need restart")
+                raise
+            
+            # Debug: Log raw model response
+            logger.info(f"=== RAW MODEL RESPONSE ===")
+            logger.info(f"RESPONSE: {repr(response_text)}")
             
             # Parse tool calls
             tool_calls = self.tool_parser.extract_tool_calls(response_text)
             clean_text = self.tool_parser.clean_text(response_text)
+            
+            # Debug: Log parsing results
+            logger.info(f"=== PARSING RESULTS ===")
+            logger.info(f"TOOL CALLS FOUND: {len(tool_calls)}")
+            if tool_calls:
+                for i, tc in enumerate(tool_calls):
+                    logger.info(f"TOOL {i}: {json.dumps(tc, indent=2)}")
+            logger.info(f"CLEAN TEXT: {repr(clean_text)}")
             
             # Prepare choice
             choice = {
@@ -431,6 +559,10 @@ class Qwen3APIServer:
                 }
             )
             
+            # Debug: Log response summary
+            logger.info(f"=== RESPONSE SENT ===")
+            logger.info(f"Tool calls: {len(tool_calls)}, Finish reason: {choice['finish_reason']}")
+            
             return response.model_dump()
             
         except Exception as e:
@@ -438,90 +570,114 @@ class Qwen3APIServer:
             raise
     
     def _generate_stream(self, prompt: str, generation_params: Dict) -> Generator[str, None, None]:
-        """Generate streaming response with tool call support"""
+        """Generate streaming response with optimized tool call detection"""
         try:
             # Add streaming parameter
             generation_params["stream"] = True
             
-            # Buffer for accumulating chunks to detect tool calls
+            # Capture raw model output and response chunks for debugging
+            model_raw = ""
+            response_chunks: List[str] = []
+            
+            # Simplified buffer strategy - Jinja template ensures predictable format
             buffer = ""
             tool_emitted = False
             
             # Generate with streaming
             for chunk in self.backend.generate_stream(prompt, **generation_params):
-                # Accumulate into buffer to detect tool calls that may span chunks
+                # Accumulate into buffer for tool call detection
                 buffer += chunk
+                model_raw += chunk  # Capture raw
                 
-                # Try to parse tool calls on the current buffer
-                tool_calls = self.tool_parser.extract_tool_calls(buffer)
-                
-                if tool_calls and not tool_emitted:
-                    # Clean the visible text (strip tool XML etc.) for any prior content
-                    visible = self.tool_parser.clean_text(buffer)
+                # Only check for tool calls if we have a complete block
+                if "</tool_call>" in buffer and not tool_emitted:
+                    tool_calls = self.tool_parser.extract_tool_calls(buffer)
                     
-                    # First, flush any visible content that was produced before the tool call
-                    if visible:
-                        content_frame = {
+                    if tool_calls:
+                        # Extract clean visible text before tool calls
+                        visible = self.tool_parser.clean_text(buffer)
+                        
+                        # Emit any preceding content
+                        if visible.strip():
+                            content_frame = {
+                                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": self.config.get("active_model", "unknown"),
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {"content": visible},
+                                    "finish_reason": None
+                                }]
+                            }
+                            frame_str = f"data: {json.dumps(content_frame)}\n\n"
+                            response_chunks.append(frame_str)
+                            yield frame_str
+                        
+                        # Emit tool calls (Jinja template should ensure only one call set per response)
+                        tc_frame = {
                             "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
                             "model": self.config.get("active_model", "unknown"),
                             "choices": [{
                                 "index": 0,
-                                "delta": {"content": visible},
-                                "finish_reason": None
+                                "delta": {"tool_calls": tool_calls},
+                                "finish_reason": "tool_calls"
                             }]
                         }
-                        yield f"data: {json.dumps(content_frame)}\n\n"
-                    
-                    # Emit tool-calls as an OpenAI 1.2 delta
-                    tc_frame = {
+                        frame_str = f"data: {json.dumps(tc_frame)}\n\n"
+                        response_chunks.append(frame_str)
+                        yield frame_str
+                        
+                        tool_emitted = True
+                        buffer = ""  # Clear buffer after tool emission
+                        continue
+                
+                # Stream text chunks normally when no tool calls detected
+                # But don't stream if we're in the middle of building a tool call
+                elif not tool_emitted and "<tool_call>" not in buffer:
+                    text_frame = {
                         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                         "object": "chat.completion.chunk",
                         "created": int(time.time()),
                         "model": self.config.get("active_model", "unknown"),
                         "choices": [{
                             "index": 0,
-                            "delta": {"tool_calls": tool_calls},
+                            "delta": {"content": chunk},
                             "finish_reason": None
                         }]
                     }
-                    yield f"data: {json.dumps(tc_frame)}\n\n"
-                    
-                    tool_emitted = True
-                    # Reset buffer after emitting (we've flushed both visible text and tool calls)
-                    buffer = ""
-                    continue
-                
-                # If no tool-calls were found, stream the chunk as text
-                text_frame = {
+                    frame_str = f"data: {json.dumps(text_frame)}\n\n"
+                    response_chunks.append(frame_str)
+                    yield frame_str
+            
+            # Send final chunk only if no tool calls were emitted
+            if not tool_emitted:
+                final_chunk = {
                     "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": self.config.get("active_model", "unknown"),
                     "choices": [{
                         "index": 0,
-                        "delta": {"content": chunk},
-                        "finish_reason": None
+                        "delta": {},
+                        "finish_reason": "stop"
                     }]
                 }
-                yield f"data: {json.dumps(text_frame)}\n\n"
+                frame_str = f"data: {json.dumps(final_chunk)}\n\n"
+                response_chunks.append(frame_str)
+                yield frame_str
             
-            # Send final chunk
-            final_chunk = {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": self.config.get("active_model", "unknown"),
-                "choices": [{
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop"
-                }]
-            }
+            done_str = "data: [DONE]\n\n"
+            response_chunks.append(done_str)
+            yield done_str
             
-            yield f"data: {json.dumps(final_chunk)}\n\n"
-            yield "data: [DONE]\n\n"
+            # After streaming completes, dump raw model and response
+            logger.info("=== RAW MODEL STREAM ===")
+            logger.info(model_raw)
+            logger.info("=== RESPONSE STREAM TO CLIENT ===")
+            logger.info("".join(response_chunks))
             
         except Exception as e:
             logger.error(f"Streaming generation error: {e}")

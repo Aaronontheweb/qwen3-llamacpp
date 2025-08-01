@@ -26,12 +26,7 @@ class Qwen3ToolParser:
         self.tool_call_parameter_regex = re.compile(
             r"<parameter=(.*?)</parameter>|<parameter=(.*?)$", re.DOTALL
         )
-        # Additional regex patterns to support Qwen's <function> style output (without <tool_call> wrapper)
-        self.function_block_regex = re.compile(r"<function>(.*?)</function>", re.DOTALL | re.IGNORECASE)
-        self.function_name_regex = re.compile(r"<name>(.*?)</name>", re.DOTALL | re.IGNORECASE)
-        self.param_block_regex = re.compile(r"<parameter>(.*?)</parameter>", re.DOTALL | re.IGNORECASE)
-        self.param_name_regex = re.compile(r"<name>(.*?)</name>", re.DOTALL | re.IGNORECASE)
-        self.param_value_regex = re.compile(r"<value>(.*?)</value>", re.DOTALL | re.IGNORECASE)
+        # Remove complex fallback patterns - Jinja template should enforce canonical format
         
         # Track parsing statistics
         self.stats = {
@@ -43,56 +38,36 @@ class Qwen3ToolParser:
     
     def extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
         """
-        Extract tool calls from Qwen3 response text. Handles both the legacy
-        `<tool_call>...</tool_call>` wrapper as well as the newer Qwen style
-        that emits standalone `<function>...</function>` blocks.
+        Extract tool calls from Qwen3 response text.
+        With Jinja template enforcement, we expect only canonical
+        <tool_call><function=name><parameter=name>value</parameter></function></tool_call> format.
         """
         if not text:
             return []
 
         tool_calls: List[Dict[str, Any]] = []
 
-        # ------------------------------------------------------------------
-        # Legacy: <tool_call> wrapper blocks
-        # ------------------------------------------------------------------
+        # Find canonical <tool_call> wrapper blocks
         tool_call_matches = self.tool_call_regex.findall(text)
-        for match in tool_call_matches:
+        for index, match in enumerate(tool_call_matches):
             tool_call_content = match[0] if match[0] else match[1]
             if not tool_call_content.strip():
                 continue
             try:
-                tc = self._parse_xml_function_call(tool_call_content)
+                tc = self._parse_xml_function_call(tool_call_content, index)
                 if tc:
                     tool_calls.append(tc)
                     self.stats["successful_parses"] += 1
                 else:
                     self.stats["failed_parses"] += 1
             except Exception as e:
-                logger.warning(f"Failed to parse <tool_call> block: {e}")
-                self.stats["malformed_xml"] += 1
-
-        # ------------------------------------------------------------------
-        # Current Qwen style: standalone <function> blocks
-        # ------------------------------------------------------------------
-        function_blocks = self.function_block_regex.findall(text)
-        for func_content in function_blocks:
-            if not func_content.strip():
-                continue
-            try:
-                tc = self._parse_function_block(func_content)
-                if tc:
-                    tool_calls.append(tc)
-                    self.stats["successful_parses"] += 1
-                else:
-                    self.stats["failed_parses"] += 1
-            except Exception as e:
-                logger.warning(f"Failed to parse <function> block: {e}")
+                logger.warning(f"Failed to parse tool call: {e}")
                 self.stats["malformed_xml"] += 1
 
         self.stats["total_calls"] += len(tool_calls)
         return tool_calls
     
-    def _parse_xml_function_call(self, xml_content: str) -> Optional[Dict[str, Any]]:
+    def _parse_xml_function_call(self, xml_content: str, index: int = 0) -> Optional[Dict[str, Any]]:
         """
         Parse a single XML function call
         
@@ -103,15 +78,26 @@ class Qwen3ToolParser:
             OpenAI-compatible tool call dictionary or None
         """
         try:
-            # Extract function name
+            # Extract function name from <function=name> tag
             function_match = self.tool_call_function_regex.search(xml_content)
             if not function_match:
                 logger.warning("No function name found in XML")
                 return None
             
-            function_name = function_match.group(1) if function_match.group(1) else function_match.group(2)
+            function_content = function_match.group(1) if function_match.group(1) else function_match.group(2)
+            if not function_content:
+                logger.warning("Empty function content in XML")
+                return None
+            
+            # Function name is the first line/word in the function content
+            function_name = function_content.split('\n')[0].strip().split('>')[0]
             if not function_name:
-                logger.warning("Empty function name in XML")
+                logger.warning("Could not extract function name")
+                return None
+                
+            # Validate function name is reasonable (alphanumeric + underscore)
+            if not function_name.replace('_', '').replace('-', '').isalnum():
+                logger.warning(f"Invalid function name: {function_name}")
                 return None
             
             # Extract parameters
@@ -121,20 +107,27 @@ class Qwen3ToolParser:
             for param_match in param_matches:
                 param_content = param_match[0] if param_match[0] else param_match[1]
                 
-                # Parse parameter name and value
+                # Parse parameter name and value from <parameter=name>value</parameter>
                 param_parts = param_content.split('\n', 1)
                 if len(param_parts) >= 2:
-                    param_name = param_parts[0].strip()
+                    param_name = param_parts[0].strip().split('>')[0]  # Remove any trailing >
                     param_value = param_parts[1].strip()
                     
-                    # Convert parameter value to appropriate type
-                    converted_value = self._convert_param_value(param_value)
-                    parameters[param_name] = converted_value
+                    # Validate parameter name
+                    if param_name and param_name.replace('_', '').replace('-', '').isalnum():
+                        # Convert parameter value to appropriate type
+                        converted_value = self._convert_param_value(param_value)
+                        parameters[param_name] = converted_value
+                    else:
+                        logger.warning(f"Invalid parameter name: {param_name}")
+                else:
+                    logger.warning(f"Malformed parameter content: {param_content[:50]}...")
             
             # Create OpenAI-compatible tool call
             tool_call = {
                 "id": f"call_{uuid.uuid4().hex[:8]}",
                 "type": "function",
+                "index": index,
                 "function": {
                     "name": function_name,
                     "arguments": json.dumps(parameters, ensure_ascii=False)
@@ -147,43 +140,7 @@ class Qwen3ToolParser:
             logger.error(f"Error parsing XML function call: {e}")
             return None
     
-    def _parse_function_block(self, func_xml: str) -> Optional[Dict[str, Any]]:
-        """
-        Parse a <function>...</function> block into an OpenAI-compatible tool
-        call dictionary.
-        """
-        try:
-            name_match = self.function_name_regex.search(func_xml)
-            if not name_match:
-                logger.warning("No function <name> found in function block")
-                return None
-            function_name = name_match.group(1).strip()
-
-            parameters: Dict[str, Any] = {}
-            param_blocks = self.param_block_regex.findall(func_xml)
-            for param_xml in param_blocks:
-                pname_match = self.param_name_regex.search(param_xml)
-                pvalue_match = self.param_value_regex.search(param_xml)
-
-                if not pname_match or not pvalue_match:
-                    continue
-
-                param_name = pname_match.group(1).strip()
-                param_value_raw = pvalue_match.group(1).strip()
-                parameters[param_name] = self._convert_param_value(param_value_raw)
-
-            tool_call = {
-                "id": f"call_{uuid.uuid4().hex[:8]}",
-                "type": "function",
-                "function": {
-                    "name": function_name,
-                    "arguments": json.dumps(parameters, ensure_ascii=False)
-                }
-            }
-            return tool_call
-        except Exception as e:
-            logger.error(f"Error parsing <function> block: {e}")
-            return None
+    # Removed obsolete parsing methods - Jinja template enforces canonical format
 
     def _convert_param_value(self, value: str) -> Union[str, int, float, bool, None]:
         """
@@ -233,13 +190,13 @@ class Qwen3ToolParser:
         if not text:
             return text
         
-        # Remove tool call blocks
+        # Remove canonical <tool_call> blocks only
         cleaned_text = self.tool_call_regex.sub('', text)
-        
+
         # Clean up extra whitespace
         cleaned_text = re.sub(r'\n\s*\n', '\n', cleaned_text)
         cleaned_text = cleaned_text.strip()
-        
+
         return cleaned_text
     
     def get_parsing_stats(self) -> Dict[str, int]:

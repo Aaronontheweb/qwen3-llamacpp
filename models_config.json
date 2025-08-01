@@ -91,12 +91,14 @@
       }
     }
   },
-  "active_model": "qwen3-7b-instruct",
+  "active_model": "qwen3-30b-instruct",
   "download_path": "./models",
   "cache_dir": "./cache",
   "server": {
     "host": "127.0.0.1",
     "port": 8080,
-    "log_level": "INFO"
+    "log_level": "INFO",
+    "use_jinja_template": true,
+    "template_dir": "templates"
   }
 } 
