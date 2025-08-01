@@ -286,11 +286,13 @@ class Qwen3APIServer:
                 
                 # Generate response
                 if request.stream:
+                    logger.info(f"=== USING STREAMING RESPONSE ===")
                     return StreamingResponse(
                         self._generate_stream(prompt, generation_params),
                         media_type="text/event-stream"
                     )
                 else:
+                    logger.info(f"=== USING NON-STREAMING RESPONSE ===")
                     return await self._generate_completion(prompt, generation_params, tools)
                     
             except Exception as e:
@@ -476,8 +478,14 @@ class Qwen3APIServer:
     async def _generate_completion(self, prompt: str, generation_params: Dict, tools: Optional[List[Dict]] = None) -> ChatCompletionResponse:
         """Generate a single completion"""
         try:
+            # Debug: Log entry into completion function
+            logger.info(f"=== ENTERING _generate_completion ===")
+            logger.info(f"Generation params: {generation_params}")
+            
             # Generate response
+            logger.info(f"=== CALLING backend.generate ===")
             response_text = self.backend.generate(prompt, **generation_params)
+            logger.info(f"=== backend.generate COMPLETED ===")
             
             # Debug: Log raw model response
             logger.info(f"=== RAW MODEL RESPONSE ===")
