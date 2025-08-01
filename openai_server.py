@@ -7,7 +7,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Dict, List, Optional, Any, Generator
+from typing import Dict, List, Optional, Any, Generator, Union
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
@@ -45,10 +45,13 @@ class Tool(BaseModel):
     function: FunctionDefinition = Field(..., description="Function definition")
 
 class ChatCompletionRequest(BaseModel):
+    class Config:
+        extra = "allow"
     model: str = Field(..., description="Model to use")
     messages: List[ChatMessage] = Field(..., description="Chat messages")
     tools: Optional[List[Tool]] = Field(None, description="Available tools")
-    tool_choice: Optional[str] = Field(None, description="Tool choice")
+    
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(None, description='Tool choice ("auto", "none", or specific function)')
     temperature: Optional[float] = Field(0.7, description="Sampling temperature")
     max_tokens: Optional[int] = Field(2048, description="Maximum tokens to generate")
     top_p: Optional[float] = Field(0.9, description="Top-p sampling")
