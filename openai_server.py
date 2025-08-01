@@ -569,52 +569,54 @@ class Qwen3APIServer:
                 buffer += chunk
                 model_raw += chunk  # Capture raw
                 
-                # Check for complete tool calls in buffer
-                tool_calls = self.tool_parser.extract_tool_calls(buffer)
-                
-                if tool_calls and not tool_emitted:
-                    # Extract clean visible text before tool calls
-                    visible = self.tool_parser.clean_text(buffer)
+                # Only check for tool calls if we have a complete block
+                if "</tool_call>" in buffer and not tool_emitted:
+                    tool_calls = self.tool_parser.extract_tool_calls(buffer)
                     
-                    # Emit any preceding content
-                    if visible.strip():
-                        content_frame = {
+                    if tool_calls:
+                        # Extract clean visible text before tool calls
+                        visible = self.tool_parser.clean_text(buffer)
+                        
+                        # Emit any preceding content
+                        if visible.strip():
+                            content_frame = {
+                                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": self.config.get("active_model", "unknown"),
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {"content": visible},
+                                    "finish_reason": None
+                                }]
+                            }
+                        frame_str = f"data: {json.dumps(content_frame)}\n\n"
+                        response_chunks.append(frame_str)
+                            yield frame_str
+                        
+                        # Emit tool calls (Jinja template should ensure only one call set per response)
+                        tc_frame = {
                             "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
                             "model": self.config.get("active_model", "unknown"),
                             "choices": [{
                                 "index": 0,
-                                "delta": {"content": visible},
-                                "finish_reason": None
+                                "delta": {"tool_calls": tool_calls},
+                                "finish_reason": "tool_calls"
                             }]
                         }
-                        frame_str = f"data: {json.dumps(content_frame)}\n\n"
+                        frame_str = f"data: {json.dumps(tc_frame)}\n\n"
                         response_chunks.append(frame_str)
                         yield frame_str
-                    
-                    # Emit tool calls (Jinja template should ensure only one call set per response)
-                    tc_frame = {
-                        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
-                        "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": self.config.get("active_model", "unknown"),
-                        "choices": [{
-                            "index": 0,
-                            "delta": {"tool_calls": tool_calls},
-                            "finish_reason": "tool_calls"
-                        }]
-                    }
-                    frame_str = f"data: {json.dumps(tc_frame)}\n\n"
-                    response_chunks.append(frame_str)
-                    yield frame_str
-                    
-                    tool_emitted = True
-                    buffer = ""  # Clear buffer after tool emission
-                    continue
+                        
+                        tool_emitted = True
+                        buffer = ""  # Clear buffer after tool emission
+                        continue
                 
                 # Stream text chunks normally when no tool calls detected
-                if not tool_emitted:
+                # But don't stream if we're in the middle of building a tool call
+                elif not tool_emitted and "<tool_call>" not in buffer:
                     text_frame = {
                         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                         "object": "chat.completion.chunk",
