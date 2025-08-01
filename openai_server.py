@@ -26,8 +26,10 @@ logger = setup_logging()
 
 # Pydantic models for API
 class ChatMessage(BaseModel):
+    class Config:
+        extra = "allow"
     role: str = Field(..., description="Role of the message sender")
-    content: str = Field(..., description="Content of the message")
+    content: Union[str, List[Dict[str, Any]]] = Field(..., description="Content of the message (string or array of parts)")
     name: Optional[str] = Field(None, description="Name of the message sender")
 
 class FunctionParameter(BaseModel):
@@ -354,6 +356,13 @@ class Qwen3APIServer:
         for message in messages:
             role = message["role"]
             content = message["content"]
+            if isinstance(content, list):
+                # Concatenate string parts if message content is array of objects per OpenAI v1.2
+                combined_parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        combined_parts.append(part.get("text", ""))
+                content = "".join(combined_parts)
             prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
         
         # Add tools if provided
