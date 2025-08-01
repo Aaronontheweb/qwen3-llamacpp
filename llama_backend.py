@@ -34,7 +34,7 @@ class LlamaBackend:
         # llama.cpp settings
         self.llama_settings = {
             "n_gpu_layers": -1,  # Use all available GPUs
-            "n_ctx": 4096,       # Context length
+            "n_ctx": 262144,     # Context length - 256k tokens (let users decide)
             "n_batch": 512,      # Batch size
             "n_threads": os.cpu_count(),  # Use all CPU threads
             "verbose": False,    # Disable verbose output
@@ -84,15 +84,15 @@ class LlamaBackend:
             # Prepare llama.cpp settings
             settings = self.llama_settings.copy()
             
-            # Adjust settings based on model size
+            # Use maximum context window - let users decide based on their needs
+            # Note: Model effectiveness typically drops after training context length
+            # Qwen3 models are typically trained on 32k-128k context
+            settings["n_ctx"] = 262144  # 256k tokens - maximum supported
             if model_config.get("size") == "30B":
-                settings["n_ctx"] = 2048  # Reduce context for large models
                 settings["n_batch"] = 256
             elif model_config.get("size") == "14B":
-                settings["n_ctx"] = 4096
                 settings["n_batch"] = 512
             else:  # 8B and smaller
-                settings["n_ctx"] = 8192
                 settings["n_batch"] = 1024
             
             # Load model

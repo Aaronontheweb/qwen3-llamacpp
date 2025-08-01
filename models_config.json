@@ -5,14 +5,16 @@
       "type": "instruction",
       "size": "30B",
       "quantization": "4bit",
-      "description": "Large instruction-following model for complex tasks",
+      "description": "Large instruction-following model for complex tasks. Effective context: ~128k tokens, maximum supported: 256k tokens",
       "memory_estimate_gb": 18,
       "recommended_gpus": 2,
       "chat_template": "qwen3",
       "trust_remote_code": true,
+      "effective_context_tokens": 131072,
+      "max_context_tokens": 262144,
       "default_params": {
         "temperature": 0.7,
-        "max_tokens": 2048,
+        "max_tokens": 8192,
         "top_p": 0.9
       }
     },
@@ -21,14 +23,16 @@
       "type": "instruction",
       "size": "15B", 
       "quantization": "4bit",
-      "description": "Medium reasoning model, good balance",
+      "description": "Medium reasoning model, good balance. Effective context: ~64k tokens, maximum supported: 256k tokens",
       "memory_estimate_gb": 8,
       "recommended_gpus": 1,
       "chat_template": "qwen3",
       "trust_remote_code": true,
+      "effective_context_tokens": 65536,
+      "max_context_tokens": 262144,
       "default_params": {
         "temperature": 0.7,
-        "max_tokens": 2048,
+        "max_tokens": 8192,
         "top_p": 0.9
       }
     },
@@ -37,14 +41,16 @@
       "type": "instruction", 
       "size": "7B",
       "quantization": "4bit",
-      "description": "Fast instruction-following model for simple tasks",
+      "description": "Fast instruction-following model for simple tasks. Effective context: ~32k tokens, maximum supported: 256k tokens",
       "memory_estimate_gb": 4,
       "recommended_gpus": 1,
       "chat_template": "qwen3",
       "trust_remote_code": true,
+      "effective_context_tokens": 32768,
+      "max_context_tokens": 262144,
       "default_params": {
         "temperature": 0.7,
-        "max_tokens": 2048,
+        "max_tokens": 8192,
         "top_p": 0.9
       }
     },
@@ -53,14 +59,16 @@
       "type": "instruction", 
       "size": "4B",
       "quantization": "4bit",
-      "description": "Fast instruction-following model for simple tasks",
+      "description": "Fast instruction-following model for simple tasks. Effective context: ~16k tokens, maximum supported: 256k tokens",
       "memory_estimate_gb": 2,
       "recommended_gpus": 1,
       "chat_template": "qwen3",
       "trust_remote_code": true,
+      "effective_context_tokens": 16384,
+      "max_context_tokens": 262144,
       "default_params": {
         "temperature": 0.7,
-        "max_tokens": 2048,
+        "max_tokens": 8192,
         "top_p": 0.9
       }
     },
@@ -69,14 +77,16 @@
       "type": "coder",
       "size": "30B",
       "quantization": "4bit", 
-      "description": "Specialized for code generation and programming",
+      "description": "Specialized for code generation and programming. Effective context: ~128k tokens, maximum supported: 256k tokens",
       "memory_estimate_gb": 18,
       "recommended_gpus": 2,
       "chat_template": "qwen3",
       "trust_remote_code": true,
+      "effective_context_tokens": 131072,
+      "max_context_tokens": 262144,
       "default_params": {
         "temperature": 0.3,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "top_p": 0.95
       }
     }

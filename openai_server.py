@@ -140,11 +140,19 @@ class Qwen3APIServer:
             """List available models"""
             models = []
             for model_id, model_config in self.config["models"].items():
-                models.append(ModelInfo(
-                    id=model_id,
-                    created=int(time.time()),
-                    owned_by="qwen3-server"
-                ).dict())
+                model_info = {
+                    "id": model_id,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "qwen3-server",
+                    "description": model_config.get("description", ""),
+                    "context_window": {
+                        "effective_tokens": model_config.get("effective_context_tokens", 32768),
+                        "max_tokens": model_config.get("max_context_tokens", 262144),
+                        "note": "Effectiveness may decrease beyond effective_tokens, but model supports up to max_tokens"
+                    }
+                }
+                models.append(model_info)
             
             return {
                 "object": "list",
@@ -160,15 +168,27 @@ class Qwen3APIServer:
                     raise HTTPException(status_code=503, detail="No model loaded")
                 
                 # Prepare messages
-                messages = [msg.dict() for msg in request.messages]
+                messages = [msg.model_dump() for msg in request.messages]
                 
                 # Prepare tools
                 tools = None
                 if request.tools:
-                    tools = [tool.dict() for tool in request.tools]
+                    tools = [tool.model_dump() for tool in request.tools]
                 
                 # Generate prompt
                 prompt = self._create_prompt(messages, tools)
+                
+                # Check context window usage and warn if approaching limits
+                prompt_tokens = len(prompt.split())  # Approximate token count
+                current_model_config = self.config["models"].get(self.config.get("active_model", ""), {})
+                effective_context = current_model_config.get("effective_context_tokens", 32768)
+                max_context = current_model_config.get("max_context_tokens", 262144)
+                
+                if prompt_tokens > effective_context:
+                    logger.warning(f"Prompt length ({prompt_tokens} tokens) exceeds effective context window ({effective_context} tokens). Model performance may degrade.")
+                
+                if prompt_tokens > max_context:
+                    raise HTTPException(status_code=400, detail=f"Prompt length ({prompt_tokens} tokens) exceeds maximum supported context window ({max_context} tokens)")
                 
                 # Prepare generation parameters
                 generation_params = {
@@ -385,7 +405,7 @@ class Qwen3APIServer:
                 }
             )
             
-            return response.dict()
+            return response.model_dump()
             
         except Exception as e:
             logger.error(f"Generation error: {e}")
