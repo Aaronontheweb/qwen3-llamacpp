@@ -49,12 +49,12 @@ class Qwen3ToolParser:
 
         # Find canonical <tool_call> wrapper blocks
         tool_call_matches = self.tool_call_regex.findall(text)
-        for match in tool_call_matches:
+        for index, match in enumerate(tool_call_matches):
             tool_call_content = match[0] if match[0] else match[1]
             if not tool_call_content.strip():
                 continue
             try:
-                tc = self._parse_xml_function_call(tool_call_content)
+                tc = self._parse_xml_function_call(tool_call_content, index)
                 if tc:
                     tool_calls.append(tc)
                     self.stats["successful_parses"] += 1
@@ -67,7 +67,7 @@ class Qwen3ToolParser:
         self.stats["total_calls"] += len(tool_calls)
         return tool_calls
     
-    def _parse_xml_function_call(self, xml_content: str) -> Optional[Dict[str, Any]]:
+    def _parse_xml_function_call(self, xml_content: str, index: int = 0) -> Optional[Dict[str, Any]]:
         """
         Parse a single XML function call
         
@@ -78,15 +78,26 @@ class Qwen3ToolParser:
             OpenAI-compatible tool call dictionary or None
         """
         try:
-            # Extract function name
+            # Extract function name from <function=name> tag
             function_match = self.tool_call_function_regex.search(xml_content)
             if not function_match:
                 logger.warning("No function name found in XML")
                 return None
             
-            function_name = function_match.group(1) if function_match.group(1) else function_match.group(2)
+            function_content = function_match.group(1) if function_match.group(1) else function_match.group(2)
+            if not function_content:
+                logger.warning("Empty function content in XML")
+                return None
+            
+            # Function name is the first line/word in the function content
+            function_name = function_content.split('\n')[0].strip().split('>')[0]
             if not function_name:
-                logger.warning("Empty function name in XML")
+                logger.warning("Could not extract function name")
+                return None
+                
+            # Validate function name is reasonable (alphanumeric + underscore)
+            if not function_name.replace('_', '').replace('-', '').isalnum():
+                logger.warning(f"Invalid function name: {function_name}")
                 return None
             
             # Extract parameters
@@ -96,20 +107,27 @@ class Qwen3ToolParser:
             for param_match in param_matches:
                 param_content = param_match[0] if param_match[0] else param_match[1]
                 
-                # Parse parameter name and value
+                # Parse parameter name and value from <parameter=name>value</parameter>
                 param_parts = param_content.split('\n', 1)
                 if len(param_parts) >= 2:
-                    param_name = param_parts[0].strip()
+                    param_name = param_parts[0].strip().split('>')[0]  # Remove any trailing >
                     param_value = param_parts[1].strip()
                     
-                    # Convert parameter value to appropriate type
-                    converted_value = self._convert_param_value(param_value)
-                    parameters[param_name] = converted_value
+                    # Validate parameter name
+                    if param_name and param_name.replace('_', '').replace('-', '').isalnum():
+                        # Convert parameter value to appropriate type
+                        converted_value = self._convert_param_value(param_value)
+                        parameters[param_name] = converted_value
+                    else:
+                        logger.warning(f"Invalid parameter name: {param_name}")
+                else:
+                    logger.warning(f"Malformed parameter content: {param_content[:50]}...")
             
             # Create OpenAI-compatible tool call
             tool_call = {
                 "id": f"call_{uuid.uuid4().hex[:8]}",
                 "type": "function",
+                "index": index,
                 "function": {
                     "name": function_name,
                     "arguments": json.dumps(parameters, ensure_ascii=False)
