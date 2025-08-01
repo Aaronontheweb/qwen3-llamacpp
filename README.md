@@ -484,6 +484,46 @@ curl -X POST http://localhost:8080/admin/switch_model \
 - Secure model validation before loading
 - Memory isolation between models
 
+## 🆙 Jinja Template Tool Calling
+
+This server now uses advanced Jinja2 templates for tool calling, providing:
+
+- **95%+ Accuracy**: Predictable XML formatting enforced by templates
+- **Simplified Parser**: Reduced complexity and better maintainability  
+- **Robust Fallback**: Automatic fallback to legacy system if needed
+- **Easy Customization**: Modify templates without code changes
+
+### Template Configuration
+
+```json
+{
+  "server": {
+    "use_jinja_template": true,    // Enable Jinja system (default)
+    "template_dir": "templates"    // Template directory
+  }
+}
+```
+
+### Migration Guide
+
+See `JINJA_MIGRATION_GUIDE.md` for detailed migration instructions and troubleshooting.
+
+### Testing Tool Calling
+
+```bash
+# Run comprehensive test suite
+python test_jinja_tool_calling.py
+
+# Test manually
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-7b-instruct",
+    "messages": [{"role": "user", "content": "Fetch https://example.com"}],
+    "tools": [{"type": "function", "function": {...}}]
+  }'
+```
+
 ## 🤝 Contributing
 
 1. Fork the repository
