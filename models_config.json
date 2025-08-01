@@ -37,12 +37,12 @@
       }
     },
     "qwen3-7b-instruct": {
-      "name": "unsloth/Qwen3-7B-Instruct-GGUF",
+      "name": "TheBloke/Qwen3-7B-Instruct-GGUF",
       "type": "instruction", 
       "size": "7B",
       "quantization": "4bit",
-      "description": "Fast instruction-following model for simple tasks. Effective context: ~32k tokens, maximum supported: 256k tokens",
-      "memory_estimate_gb": 4,
+      "description": "Qwen3-7B instruction-tuned GGUF. Effective context: ~32k tokens, maximum supported: 131k tokens",
+      "memory_estimate_gb": 5,
       "recommended_gpus": 1,
       "chat_template": "qwen3",
       "trust_remote_code": true,
