@@ -592,7 +592,7 @@ class Qwen3APIServer:
                             }
                         frame_str = f"data: {json.dumps(content_frame)}\n\n"
                         response_chunks.append(frame_str)
-                            yield frame_str
+                        yield frame_str
                         
                         # Emit tool calls (Jinja template should ensure only one call set per response)
                         tc_frame = {
