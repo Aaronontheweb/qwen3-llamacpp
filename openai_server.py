@@ -555,6 +555,10 @@ class Qwen3APIServer:
             # Add streaming parameter
             generation_params["stream"] = True
             
+            # Capture raw model output and response chunks for debugging
+            model_raw = ""
+            response_chunks: List[str] = []
+            
             # Simplified buffer strategy - Jinja template ensures predictable format
             buffer = ""
             tool_emitted = False
@@ -563,6 +567,7 @@ class Qwen3APIServer:
             for chunk in self.backend.generate_stream(prompt, **generation_params):
                 # Accumulate into buffer for tool call detection
                 buffer += chunk
+                model_raw += chunk  # Capture raw
                 
                 # Check for complete tool calls in buffer
                 tool_calls = self.tool_parser.extract_tool_calls(buffer)
@@ -584,7 +589,9 @@ class Qwen3APIServer:
                                 "finish_reason": None
                             }]
                         }
-                        yield f"data: {json.dumps(content_frame)}\n\n"
+                        frame_str = f"data: {json.dumps(content_frame)}\n\n"
+                        response_chunks.append(frame_str)
+                        yield frame_str
                     
                     # Emit tool calls (Jinja template should ensure only one call set per response)
                     tc_frame = {
@@ -598,7 +605,9 @@ class Qwen3APIServer:
                             "finish_reason": "tool_calls"
                         }]
                     }
-                    yield f"data: {json.dumps(tc_frame)}\n\n"
+                    frame_str = f"data: {json.dumps(tc_frame)}\n\n"
+                    response_chunks.append(frame_str)
+                    yield frame_str
                     
                     tool_emitted = True
                     buffer = ""  # Clear buffer after tool emission
@@ -617,7 +626,9 @@ class Qwen3APIServer:
                             "finish_reason": None
                         }]
                     }
-                    yield f"data: {json.dumps(text_frame)}\n\n"
+                    frame_str = f"data: {json.dumps(text_frame)}\n\n"
+                    response_chunks.append(frame_str)
+                    yield frame_str
             
             # Send final chunk only if no tool calls were emitted
             if not tool_emitted:
@@ -632,9 +643,19 @@ class Qwen3APIServer:
                         "finish_reason": "stop"
                     }]
                 }
-                yield f"data: {json.dumps(final_chunk)}\n\n"
+                frame_str = f"data: {json.dumps(final_chunk)}\n\n"
+                response_chunks.append(frame_str)
+                yield frame_str
             
-            yield "data: [DONE]\n\n"
+            done_str = "data: [DONE]\n\n"
+            response_chunks.append(done_str)
+            yield done_str
+            
+            # After streaming completes, dump raw model and response
+            logger.info("=== RAW MODEL STREAM ===")
+            logger.info(model_raw)
+            logger.info("=== RESPONSE STREAM TO CLIENT ===")
+            logger.info("".join(response_chunks))
             
         except Exception as e:
             logger.error(f"Streaming generation error: {e}")
