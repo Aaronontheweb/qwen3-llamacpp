@@ -75,6 +75,17 @@ qwen3-server/
 
 **If you see 100% CPU usage and 0% GPU usage, you need to reinstall llama-cpp-python with CUDA support!**
 
+### Prerequisites
+
+1. **Install CUDA Toolkit**:
+   ```bash
+   sudo apt update
+   sudo apt install nvidia-cuda-toolkit
+   
+   # Verify installation
+   nvcc --version
+   ```
+
 1. **Clone the repository**:
    ```bash
    git clone <repository-url>
@@ -94,16 +105,27 @@ qwen3-server/
 
 4. **🚨 CRITICAL: Install llama-cpp-python with CUDA support**:
    ```bash
+   # Set correct CUDA paths (Ubuntu package manager installation)
+   export CUDAToolkit_ROOT=/usr/lib/nvidia-cuda-toolkit
+   export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+   
    # Install with CUDA support (not included in requirements.txt)
-CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install llama-cpp-python --upgrade
+   CMAKE_ARGS="-DGGML_CUDA=on" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir --force-reinstall
    ```
 
 5. **Verify CUDA support is working**:
    ```bash
-   python -c "import llama_cpp; print('CUDA support available:', hasattr(llama_cpp.llama_cpp, 'llama_supports_cuda') and llama_cpp.llama_cpp.llama_supports_cuda())"
+   python -c "import llama_cpp; print('GPU offload supported:', llama_cpp.llama_cpp.llama_supports_gpu_offload())"
    ```
    
-   **Expected output**: `CUDA support available: True`
+   **Expected output**:
+   ```
+   ggml_cuda_init: GGML_CUDA_FORCE_MMQ:    no
+   ggml_cuda_init: GGML_CUDA_FORCE_CUBLAS: no
+   ggml_cuda_init: found X CUDA devices:
+     Device 0: NVIDIA GeForce RTX XXX, compute capability X.X, VMM: yes
+   GPU offload supported: True
+   ```
    
    **If you see `False` or an error, CUDA support is not working!**
 
