@@ -37,7 +37,7 @@
       }
     },
     "qwen3-7b-instruct": {
-      "name": "TheBloke/Llama-2-7B-Chat-GGUF",
+      "name": "unsloth/Qwen3-7B-Instruct-GGUF",
       "type": "instruction", 
       "size": "7B",
       "quantization": "4bit",
