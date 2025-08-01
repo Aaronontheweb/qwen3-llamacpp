@@ -5,6 +5,7 @@ llama.cpp backend integration for Qwen3 multi-GPU server
 import logging
 import os
 import time
+import re
 from typing import Dict, List, Optional, Any, Generator
 from pathlib import Path
 
@@ -45,6 +46,22 @@ class LlamaBackend:
         # Update settings from config
         if "llama_settings" in config:
             self.llama_settings.update(config["llama_settings"])
+    
+    def _extract_training_context_from_error(self, error_message: str) -> Optional[int]:
+        """
+        Extract the training context size from llama.cpp error messages
+        
+        Args:
+            error_message: Error message from llama.cpp
+            
+        Returns:
+            Training context size in tokens, or None if not found
+        """
+        # Look for pattern: n_ctx_train (40960)
+        match = re.search(r'n_ctx_train \((\d+)\)', str(error_message))
+        if match:
+            return int(match.group(1))
+        return None
     
     def load_model(self, model_path: str, model_config: Dict[str, Any]) -> bool:
         """
@@ -157,11 +174,16 @@ class LlamaBackend:
                         pass
                     self.model = None
                 
-                # Try with smaller context window for 30B models
-                if model_config.get("size") == "30B" and settings["n_ctx"] > 16384:
-                    logger.info("Retrying with smaller context window (16k)...")
-                    settings["n_ctx"] = 16384
-                    settings["n_batch"] = 128
+                # Check if this is a training context overflow error
+                training_context = self._extract_training_context_from_error(str(e))
+                if training_context and training_context < settings["n_ctx"]:
+                    logger.info(f"Detected model training context: {training_context} tokens")
+                    logger.info(f"Retrying with training context limit: {training_context}")
+                    
+                    # Use training context as the hard limit
+                    settings["n_ctx"] = training_context
+                    # Also adjust batch size to be safe
+                    settings["n_batch"] = min(settings["n_batch"], training_context // 4)
                     
                     try:
                         self.model = Llama(
@@ -173,7 +195,7 @@ class LlamaBackend:
                         self.model_path = model_path
                         self.model_config = model_config
                         
-                        logger.info(f"Model loaded successfully with 16k context in {load_time:.2f}s")
+                        logger.info(f"Model loaded successfully with {training_context} context in {load_time:.2f}s")
                         logger.info(f"Model info: {self._get_model_info()}")
                         
                         # Log GPU memory status
@@ -182,14 +204,7 @@ class LlamaBackend:
                         return True
                         
                     except Exception as e2:
-                        logger.error(f"Failed to load even with 16k context: {e2}")
-                        # Clean up second failed attempt
-                        if hasattr(self, 'model') and self.model is not None:
-                            try:
-                                del self.model
-                            except:
-                                pass
-                            self.model = None
+                        logger.error(f"Failed to load even with training context limit {training_context}: {e2}")
                 
                 # If we get here, all attempts failed
                 logger.error(f"Failed to load model: {e}")
