@@ -321,19 +321,26 @@ class ModelManager:
         model_name = model_config["name"]
         download_path = self.config["download_path"]
         
-        # Construct model path - try different common filenames
+        # Construct model path and find the actual GGUF file
         model_dir = os.path.join(download_path, model_name.replace("/", "_"))
-        possible_files = [
-            "model.gguf",
-            "llama-2-7b-chat.Q4_K_M.gguf",
-            "qwen2.5-7b-instruct.Q4_K_M.gguf"
-        ]
         
+        # Check if model directory exists
+        if not os.path.exists(model_dir):
+            logger.error(f"Model directory not found: {model_dir}")
+            return False
+        
+        # Look for any .gguf file in the model directory (including subdirectories)
         model_path = None
-        for filename in possible_files:
-            test_path = os.path.join(model_dir, filename)
-            if os.path.exists(test_path):
-                model_path = test_path
+        for root, dirs, files in os.walk(model_dir):
+            for file in files:
+                if file.endswith('.gguf'):
+                    test_path = os.path.join(root, file)
+                    # Check if file is not empty
+                    if os.path.exists(test_path) and os.path.getsize(test_path) > 0:
+                        model_path = test_path
+                        logger.info(f"Found model file: {model_path}")
+                        break
+            if model_path:
                 break
         
         if not model_path:
