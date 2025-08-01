@@ -102,6 +102,20 @@ class Qwen3APIServer:
             version="1.0.0"
         )
         
+        # Add validation error handler
+        from fastapi.exceptions import RequestValidationError
+        from fastapi.responses import JSONResponse
+        
+        @self.app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(request: Request, exc: RequestValidationError):
+            try:
+                body_bytes = await request.body()
+                body_text = body_bytes.decode("utf-8") if body_bytes else "<empty>"
+            except Exception:
+                body_text = "<unavailable>"
+            logger.error("422 Validation Error: %s\nRequest body: %s", exc.errors(), body_text)
+            return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
         # Add CORS middleware
         self.app.add_middleware(
             CORSMiddleware,
