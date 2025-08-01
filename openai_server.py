@@ -57,7 +57,7 @@ class ChatCompletionRequest(BaseModel):
     
     tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(None, description='Tool choice ("auto", "none", or specific function)')
     temperature: Optional[float] = Field(0.7, description="Sampling temperature")
-    max_tokens: Optional[int] = Field(2048, description="Maximum tokens to generate")
+    max_tokens: Optional[int] = Field(4096, description="Maximum tokens to generate")
     top_p: Optional[float] = Field(0.9, description="Top-p sampling")
     stream: Optional[bool] = Field(False, description="Stream response")
     stop: Optional[List[str]] = Field(None, description="Stop sequences")
@@ -280,6 +280,12 @@ class Qwen3APIServer:
                     "max_tokens": request.max_tokens,
                     "top_p": request.top_p,
                 }
+                
+                # Debug: Log generation parameters
+                logger.info(f"=== GENERATION PARAMETERS ===")
+                logger.info(f"max_tokens: {request.max_tokens}")
+                logger.info(f"temperature: {request.temperature}")
+                logger.info(f"top_p: {request.top_p}")
                 
                 if request.stop:
                     generation_params["stop"] = request.stop
