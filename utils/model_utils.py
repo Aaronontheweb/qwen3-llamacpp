@@ -147,17 +147,19 @@ def is_model_downloaded(model_name: str, download_path: str) -> bool:
         True if model is downloaded, False otherwise
     """
     model_path = get_model_path(model_name, download_path)
-    # Check for common GGUF filenames
-    possible_files = [
-        "model.gguf",
-        "llama-2-7b-chat.Q4_K_M.gguf",
-        "qwen2.5-7b-instruct.Q4_K_M.gguf"
-    ]
     
-    for filename in possible_files:
-        gguf_file = os.path.join(model_path, filename)
-        if os.path.exists(gguf_file):
-            return True
+    # Check if model directory exists
+    if not os.path.exists(model_path):
+        return False
+    
+    # Look for any .gguf file in the model directory (including subdirectories)
+    for root, dirs, files in os.walk(model_path):
+        for file in files:
+            if file.endswith('.gguf'):
+                gguf_file = os.path.join(root, file)
+                # Check if file is not empty
+                if os.path.exists(gguf_file) and os.path.getsize(gguf_file) > 0:
+                    return True
     
     return False
 

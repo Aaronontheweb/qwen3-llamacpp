@@ -200,8 +200,8 @@ class ModelManagerCLI:
                         file_sizes[gguf_file] = 15.0  # Default estimate
             
             # Sort files by quality (best to worst) and find the best that fits
-            # Quality order: BF16 > Q8_0 > Q6_K > Q5_K > Q4_K > Q3_K > Q2_K
-            quality_order = ['BF16', 'Q8_0', 'Q6_K', 'Q5_K', 'Q4_K', 'Q3_K', 'Q2_K']
+            # Quality order: Q4_K > Q5_K > Q6_K > Q8_0 > BF16 (avoid BF16 for most setups)
+            quality_order = ['Q4_K', 'Q5_K', 'Q6_K', 'Q8_0', 'BF16']
             
             selected_file = None
             selected_quality = None
@@ -211,8 +211,8 @@ class ModelManagerCLI:
                 for file in matching_files:
                     if file in file_sizes:
                         file_size_gb = file_sizes[file]
-                        # Check if file fits in available memory (with 1GB buffer)
-                        if file_size_gb <= (available_memory_gb - 1.0):
+                        # Check if file fits in available memory (with 2GB buffer for safety)
+                        if file_size_gb <= (available_memory_gb - 2.0):
                             selected_file = file
                             selected_quality = quality
                             break
