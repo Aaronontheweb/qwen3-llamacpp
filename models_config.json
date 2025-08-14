@@ -12,6 +12,9 @@
       "trust_remote_code": true,
       "effective_context_tokens": 131072,
       "max_context_tokens": 262144,
+      "kv_cache_mb_per_1k": 175,
+      "n_gpu_layers": 40,
+      "hybrid_mode": true,
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -30,6 +33,9 @@
       "trust_remote_code": true,
       "effective_context_tokens": 65536,
       "max_context_tokens": 262144,
+      "kv_cache_mb_per_1k": 100,
+      "n_gpu_layers": -1,
+      "hybrid_mode": false,
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -48,6 +54,9 @@
       "trust_remote_code": true,
       "effective_context_tokens": 32768,
       "max_context_tokens": 32768,
+      "kv_cache_mb_per_1k": 50,
+      "n_gpu_layers": -1,
+      "hybrid_mode": false,
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -66,6 +75,9 @@
       "trust_remote_code": true,
       "effective_context_tokens": 16384,
       "max_context_tokens": 262144,
+      "kv_cache_mb_per_1k": 25,
+      "n_gpu_layers": -1,
+      "hybrid_mode": false,
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -84,6 +96,9 @@
       "trust_remote_code": true,
       "effective_context_tokens": 131072,
       "max_context_tokens": 262144,
+      "kv_cache_mb_per_1k": 175,
+      "n_gpu_layers": 40,
+      "hybrid_mode": true,
       "default_params": {
         "temperature": 0.3,
         "max_tokens": 8192,
