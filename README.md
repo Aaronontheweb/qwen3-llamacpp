@@ -174,7 +174,7 @@ The server is configured through `models_config.json`. Key configuration options
 | `qwen3-30b-instruct` | 30B | instruction | 18 | 2 | Large instruction-following model for complex tasks |
 | `qwen3-14b-instruct` | 14B | instruction | 8 | 1 | Medium instruction-following model, good balance |
 | `qwen3-8b-instruct` | 8B | instruction | 5 | 1 | Fast instruction-following model for simple tasks |
-| `qwen3-coder-14b` | 14B | coder | 8 | 1 | Specialized for code generation and programming |
+| `qwen3-coder-30b` | 30B | coder | 18 | 2 | Specialized for code generation and programming |
 
 ## 🚀 Usage
 
