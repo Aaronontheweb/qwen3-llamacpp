@@ -1,0 +1,34 @@
+[flake8]
+max-line-length = 127
+max-complexity = 10
+exclude = 
+    .git,
+    __pycache__,
+    build,
+    dist,
+    venv,
+    .venv,
+    *.egg-info,
+    .mypy_cache,
+    .pytest_cache,
+    .ruff_cache
+
+# Ignore specific errors
+ignore = 
+    # E501: Line too long (handled by formatter)
+    E501,
+    # W503: Line break before binary operator (conflicts with W504)
+    W503,
+    # E203: Whitespace before ':' (conflicts with black)
+    E203,
+    # E731: Do not assign a lambda expression
+    E731
+
+# Per-file ignores
+per-file-ignores =
+    # Allow unused imports in __init__ files
+    __init__.py:F401
+    # Allow unused variables and imports in test files
+    test_*.py:F401,F841
+    # Allow undefined names in openai_server (FastAPI background tasks)
+    openai_server.py:F821
