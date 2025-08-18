@@ -20,7 +20,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from utils.logging_config import setup_logging
 from utils.gpu_monitor import get_gpu_monitor
-from llama_backend import get_model_manager, get_llama_backend
+from model_manager import get_model_manager
 from tool_parser import get_tool_parser, get_tool_validator
 
 # Set up logging
@@ -125,8 +125,8 @@ class Qwen3APIServer:
         
         self.config_path = config_path
         self.config = self._load_config()
-        self.model_manager = get_model_manager(self.config)
-        self.backend = get_llama_backend(self.config)
+        self.model_manager = get_model_manager(self.config_path)
+        self.backend = self.model_manager.backend  # Use backend from model manager
         self.tool_parser = get_tool_parser()
         self.tool_validator = get_tool_validator()
         self.gpu_monitor = get_gpu_monitor()
