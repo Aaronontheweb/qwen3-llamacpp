@@ -18,6 +18,7 @@ except ImportError:
 
 from utils.gpu_monitor import get_gpu_monitor
 from utils.model_utils import validate_gguf_file, get_model_info_from_gguf
+from process_manager import get_process_manager
 
 logger = logging.getLogger("qwen3_server.llama_backend")
 
@@ -31,6 +32,10 @@ class LlamaBackend:
         self.model_path = None
         self.model_config = None
         self.gpu_monitor = get_gpu_monitor()
+        self.process_manager = get_process_manager()
+        
+        # Register cleanup callback
+        self.process_manager.register_cleanup(self._emergency_cleanup)
         
         # llama.cpp settings
         self.llama_settings = {
@@ -352,6 +357,32 @@ class LlamaBackend:
         """Clean up resources"""
         self.unload_model()
         self.gpu_monitor.cleanup()
+    
+    def _emergency_cleanup(self):
+        """Emergency cleanup for abnormal exits"""
+        logger.warning("Performing emergency LlamaBackend cleanup")
+        try:
+            if self.model:
+                # Try to free the model memory immediately
+                try:
+                    # Direct memory cleanup if available
+                    if hasattr(self.model, '_c_model'):
+                        from llama_cpp import llama_free
+                        llama_free(self.model._c_model)
+                except:
+                    pass
+                
+                # Delete the model object
+                del self.model
+                self.model = None
+                
+                # Force garbage collection
+                import gc
+                gc.collect()
+                
+                logger.info("Emergency model cleanup completed")
+        except Exception as e:
+            logger.error(f"Emergency cleanup failed: {e}")
 
 
 class ModelManager:
@@ -361,6 +392,10 @@ class ModelManager:
         self.config = config
         self.backend = LlamaBackend(config)
         self.current_model_id = None
+        self.process_manager = get_process_manager()
+        
+        # Register cleanup callback
+        self.process_manager.register_cleanup(self.cleanup)
         
     def load_model_by_id(self, model_id: str) -> bool:
         """
