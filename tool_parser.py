@@ -7,14 +7,14 @@ import json
 import logging
 import re
 import uuid
-from typing import Dict, List, Optional, Any, Union
+from typing import Any, Optional, Union
 
 logger = logging.getLogger("qwen3_server.tool_parser")
 
 
 class Qwen3ToolParser:
     """Parser for Qwen3 XML tool calls"""
-    
+
     def __init__(self):
         # Regex patterns for XML parsing
         self.tool_call_regex = re.compile(
@@ -27,7 +27,7 @@ class Qwen3ToolParser:
             r"<parameter=(.*?)</parameter>|<parameter=(.*?)$", re.DOTALL
         )
         # Remove complex fallback patterns - Jinja template should enforce canonical format
-        
+
         # Track parsing statistics
         self.stats = {
             "total_calls": 0,
@@ -35,8 +35,8 @@ class Qwen3ToolParser:
             "failed_parses": 0,
             "malformed_xml": 0
         }
-    
-    def extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
+
+    def extract_tool_calls(self, text: str) -> list[dict[str, Any]]:
         """
         Extract tool calls from Qwen3 response text.
         With Jinja template enforcement, we expect only canonical
@@ -45,7 +45,7 @@ class Qwen3ToolParser:
         if not text:
             return []
 
-        tool_calls: List[Dict[str, Any]] = []
+        tool_calls: list[dict[str, Any]] = []
 
         # Find canonical <tool_call> wrapper blocks
         tool_call_matches = self.tool_call_regex.findall(text)
@@ -66,14 +66,14 @@ class Qwen3ToolParser:
 
         self.stats["total_calls"] += len(tool_calls)
         return tool_calls
-    
-    def _parse_xml_function_call(self, xml_content: str, index: int = 0) -> Optional[Dict[str, Any]]:
+
+    def _parse_xml_function_call(self, xml_content: str, index: int = 0) -> Optional[dict[str, Any]]:
         """
         Parse a single XML function call
-        
+
         Args:
             xml_content: XML content for a single function call
-            
+
         Returns:
             OpenAI-compatible tool call dictionary or None
         """
@@ -83,36 +83,36 @@ class Qwen3ToolParser:
             if not function_match:
                 logger.warning("No function name found in XML")
                 return None
-            
+
             function_content = function_match.group(1) if function_match.group(1) else function_match.group(2)
             if not function_content:
                 logger.warning("Empty function content in XML")
                 return None
-            
+
             # Function name is the first line/word in the function content
             function_name = function_content.split('\n')[0].strip().split('>')[0]
             if not function_name:
                 logger.warning("Could not extract function name")
                 return None
-                
+
             # Validate function name is reasonable (alphanumeric + underscore)
             if not function_name.replace('_', '').replace('-', '').isalnum():
                 logger.warning(f"Invalid function name: {function_name}")
                 return None
-            
+
             # Extract parameters
             parameters = {}
             param_matches = self.tool_call_parameter_regex.findall(xml_content)
-            
+
             for param_match in param_matches:
                 param_content = param_match[0] if param_match[0] else param_match[1]
-                
+
                 # Parse parameter name and value from <parameter=name>value</parameter>
                 param_parts = param_content.split('\n', 1)
                 if len(param_parts) >= 2:
                     param_name = param_parts[0].strip().split('>')[0]  # Remove any trailing >
                     param_value = param_parts[1].strip()
-                    
+
                     # Validate parameter name
                     if param_name and param_name.replace('_', '').replace('-', '').isalnum():
                         # Convert parameter value to appropriate type
@@ -122,7 +122,7 @@ class Qwen3ToolParser:
                         logger.warning(f"Invalid parameter name: {param_name}")
                 else:
                     logger.warning(f"Malformed parameter content: {param_content[:50]}...")
-            
+
             # Create OpenAI-compatible tool call
             tool_call = {
                 "id": f"call_{uuid.uuid4().hex[:8]}",
@@ -133,63 +133,63 @@ class Qwen3ToolParser:
                     "arguments": json.dumps(parameters, ensure_ascii=False)
                 }
             }
-            
+
             return tool_call
-            
+
         except Exception as e:
             logger.error(f"Error parsing XML function call: {e}")
             return None
-    
+
     # Removed obsolete parsing methods - Jinja template enforces canonical format
 
     def _convert_param_value(self, value: str) -> Union[str, int, float, bool, None]:
         """
         Convert parameter value to appropriate type
-        
+
         Args:
             value: String parameter value
-            
+
         Returns:
             Converted value with appropriate type
         """
         if not value:
             return None
-        
+
         value = value.strip()
-        
+
         # Try to convert to boolean
         if value.lower() in ['true', 'false']:
             return value.lower() == 'true'
-        
+
         # Try to convert to integer
         try:
             if '.' not in value and value.replace('-', '').isdigit():
                 return int(value)
         except ValueError:
             pass
-        
+
         # Try to convert to float
         try:
             return float(value)
         except ValueError:
             pass
-        
+
         # Return as string (default)
         return value
-    
+
     def clean_text(self, text: str) -> str:
         """
         Remove tool calls from text to get clean response
-        
+
         Args:
             text: Text containing tool calls
-            
+
         Returns:
             Clean text without tool calls
         """
         if not text:
             return text
-        
+
         # Remove canonical <tool_call> blocks only
         cleaned_text = self.tool_call_regex.sub('', text)
 
@@ -198,16 +198,16 @@ class Qwen3ToolParser:
         cleaned_text = cleaned_text.strip()
 
         return cleaned_text
-    
-    def get_parsing_stats(self) -> Dict[str, int]:
+
+    def get_parsing_stats(self) -> dict[str, int]:
         """
         Get parsing statistics
-        
+
         Returns:
             Dictionary with parsing statistics
         """
         return self.stats.copy()
-    
+
     def reset_stats(self):
         """Reset parsing statistics"""
         self.stats = {
@@ -220,18 +220,18 @@ class Qwen3ToolParser:
 
 class ToolCallValidator:
     """Validator for tool calls"""
-    
+
     def __init__(self):
         self.logger = logging.getLogger("qwen3_server.tool_validator")
-    
-    def validate_tool_call(self, tool_call: Dict[str, Any], tool_schemas: List[Dict[str, Any]]) -> bool:
+
+    def validate_tool_call(self, tool_call: dict[str, Any], tool_schemas: list[dict[str, Any]]) -> bool:
         """
         Validate a tool call against available tool schemas
-        
+
         Args:
             tool_call: Tool call dictionary
             tool_schemas: List of available tool schemas
-            
+
         Returns:
             True if valid, False otherwise
         """
@@ -240,18 +240,18 @@ class ToolCallValidator:
             if not function_name:
                 self.logger.warning("Tool call missing function name")
                 return False
-            
+
             # Find matching schema
             schema = None
             for tool_schema in tool_schemas:
                 if tool_schema.get("function", {}).get("name") == function_name:
                     schema = tool_schema
                     break
-            
+
             if not schema:
                 self.logger.warning(f"Unknown function: {function_name}")
                 return False
-            
+
             # Validate parameters
             arguments = tool_call.get("function", {}).get("arguments", "{}")
             if isinstance(arguments, str):
@@ -260,61 +260,61 @@ class ToolCallValidator:
                 except json.JSONDecodeError:
                     self.logger.warning(f"Invalid JSON arguments for {function_name}")
                     return False
-            
+
             return self._validate_parameters(arguments, schema.get("function", {}).get("parameters", {}))
-            
+
         except Exception as e:
             self.logger.error(f"Error validating tool call: {e}")
             return False
-    
-    def _validate_parameters(self, arguments: Dict[str, Any], schema: Dict[str, Any]) -> bool:
+
+    def _validate_parameters(self, arguments: dict[str, Any], schema: dict[str, Any]) -> bool:
         """
         Validate parameters against schema
-        
+
         Args:
             arguments: Function arguments
             schema: Parameter schema
-            
+
         Returns:
             True if valid, False otherwise
         """
         try:
             properties = schema.get("properties", {})
             required = schema.get("required", [])
-            
+
             # Check required parameters
             for param_name in required:
                 if param_name not in arguments:
                     self.logger.warning(f"Missing required parameter: {param_name}")
                     return False
-            
+
             # Check parameter types
             for param_name, param_value in arguments.items():
                 if param_name not in properties:
                     self.logger.warning(f"Unknown parameter: {param_name}")
                     return False
-                
+
                 param_schema = properties[param_name]
                 param_type = param_schema.get("type")
-                
+
                 if not self._validate_parameter_type(param_value, param_type):
                     self.logger.warning(f"Invalid type for parameter {param_name}: expected {param_type}")
                     return False
-            
+
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error validating parameters: {e}")
             return False
-    
+
     def _validate_parameter_type(self, value: Any, expected_type: str) -> bool:
         """
         Validate parameter type
-        
+
         Args:
             value: Parameter value
             expected_type: Expected type string
-            
+
         Returns:
             True if type matches, False otherwise
         """
@@ -347,4 +347,4 @@ def get_tool_parser() -> Qwen3ToolParser:
 
 def get_tool_validator() -> ToolCallValidator:
     """Get the global tool validator instance"""
-    return tool_validator 
+    return tool_validator
