@@ -65,7 +65,7 @@ class LlamaBackend:
     
     def load_model(self, model_path: str, model_config: Dict[str, Any]) -> bool:
         """
-        Load a model using llama.cpp
+        Load a model using llama.cpp - simplified approach that trusts llama.cpp
         
         Args:
             model_path: Path to the GGUF model file
@@ -82,136 +82,108 @@ class LlamaBackend:
             logger.error(f"Model file not found: {model_path}")
             return False
         
-        if not validate_gguf_file(model_path):
-            logger.error(f"Invalid GGUF file: {model_path}")
-            return False
-        
         try:
             # Unload existing model
             self.unload_model()
             
             logger.info(f"Loading model: {model_path}")
             
-            # Check memory requirements
-            memory_check = self._check_memory_requirements(model_config)
-            if not memory_check[0]:  # memory_check returns (fits, details)
-                logger.error(f"Model does not fit in available GPU memory: {memory_check[1]}")
-                return False
-            
-            # Prepare llama.cpp settings
+            # Prepare llama.cpp settings with sensible defaults
             settings = self.llama_settings.copy()
             
-            # Dynamically estimate context window based on available GPU memory
-            total_memory_mb, available_memory_mb = self.gpu_monitor.get_total_gpu_memory()
-            logger.info(f"GPU Memory - Total: {total_memory_mb}MB, Available: {available_memory_mb}MB")
-
-            # Heuristic: KV-cache memory per 1k tokens (MB)
-            # Approximate KV-cache memory cost per 1k tokens (MB).  Values are deliberately high-side
-            # to stay within GPU memory when multiple tensors are resident.
-            kv_mb_per_1k = {
-                "30B": 800,    # ~0.8 GB / 1k tokens (reduced from 1.3GB - was too conservative)
-                "14B": 400,    # ~0.4 GB / 1k tokens (reduced from 0.6GB)
-                "7B": 200,     # ~0.2 GB / 1k tokens (reduced from 0.27GB)
-                "4B": 100      # ~0.1 GB / 1k tokens (reduced from 0.13GB)
-            }
-            model_size = model_config.get("size", "7B")
-            kv_per_1k = kv_mb_per_1k.get(model_size, 300)  # fallback 0.3 GB per 1k tokens
-
-            # Reserve 70% of free memory for KV-cache to leave room for weights & overhead
-            kv_budget_mb = int(available_memory_mb * 0.7)
-            logger.info(f"KV-cache budget: {kv_budget_mb}MB (from {available_memory_mb}MB available)")
-            max_tokens_estimate = int((kv_budget_mb / kv_per_1k) * 1000)  # tokens
-            # Round down to nearest 1024 for safety
-            max_tokens_estimate = (max_tokens_estimate // 1024) * 1024
-
-            # Respect a hard upper cap (model training context or llama.cpp max)
-            hard_cap = model_config.get("max_context_tokens", 262144)
-            estimated_ctx = max(4096, min(max_tokens_estimate, hard_cap))
-
-            settings["n_ctx"] = estimated_ctx
-            logger.info(f"Estimated context window based on GPU memory: {estimated_ctx} tokens (model size {model_size})")
+            # Allow override of GPU layers if specified
+            if "n_gpu_layers" in model_config:
+                settings["n_gpu_layers"] = model_config["n_gpu_layers"]
             
-            # Adjust batch size crudely based on model size
-            if model_size == "30B":
-                settings["n_batch"] = 256
-            elif model_size == "14B":
-                settings["n_batch"] = 512
-            else:
-                settings["n_batch"] = 1024
+            # Start with the desired context size (or max)
+            target_context = model_config.get("max_context_tokens", 131072)
             
-            logger.info(f"Loading model with settings: n_ctx={settings['n_ctx']}, n_batch={settings['n_batch']}")
+            # List of context sizes to try, from largest to smallest
+            # We'll try these in order until one works
+            context_sizes = [
+                target_context,
+                131072,  # 128k
+                98304,   # 96k
+                65536,   # 64k
+                49152,   # 48k
+                32768,   # 32k
+                16384,   # 16k
+                8192,    # 8k
+                4096     # 4k (minimum)
+            ]
             
-            # Load model with fallback to smaller context windows
+            # Remove duplicates and sort descending
+            context_sizes = sorted(list(set([c for c in context_sizes if c <= target_context])), reverse=True)
+            
+            logger.info(f"Will try context sizes: {context_sizes}")
+            
+            # Try loading with progressively smaller context sizes
             start_time = time.time()
+            successful_context = None
             
-            # Try loading with initial settings
-            try:
-                self.model = Llama(
-                    model_path=model_path,
-                    **settings
-                )
-                load_time = time.time() - start_time
+            for context_size in context_sizes:
+                settings["n_ctx"] = context_size
+                settings["n_batch"] = min(512, context_size // 8)  # Reasonable batch size
                 
-                self.model_path = model_path
-                self.model_config = model_config
+                logger.info(f"Attempting to load with context size: {context_size} tokens")
                 
-                logger.info(f"Model loaded successfully in {load_time:.2f}s")
-                logger.info(f"Model info: {self._get_model_info()}")
-                
-                # Log GPU memory status
-                self.gpu_monitor.log_memory_status()
-                
-                return True
-                
-            except Exception as e:
-                logger.warning(f"Failed to load with context window {settings['n_ctx']}: {e}")
-                
-                # Clean up failed attempt
-                if hasattr(self, 'model') and self.model is not None:
+                try:
+                    self.model = Llama(
+                        model_path=model_path,
+                        **settings
+                    )
+                    
+                    # Success! Model loaded
+                    successful_context = context_size
+                    load_time = time.time() - start_time
+                    
+                    self.model_path = model_path
+                    self.model_config = model_config
+                    
+                    logger.info(f"✓ Model loaded successfully with {context_size} token context in {load_time:.2f}s")
+                    
+                    # Try to get actual context size from model
                     try:
-                        del self.model
+                        actual_context = self.model.n_ctx()
+                        logger.info(f"Actual model context: {actual_context} tokens")
                     except:
                         pass
-                    self.model = None
-                
-                # Check if this is a training context overflow error
-                training_context = self._extract_training_context_from_error(str(e))
-                if training_context and training_context < settings["n_ctx"]:
-                    logger.info(f"Detected model training context: {training_context} tokens")
-                    logger.info(f"Retrying with training context limit: {training_context}")
                     
-                    # Use training context as the hard limit
-                    settings["n_ctx"] = training_context
-                    # Also adjust batch size to be safe
-                    settings["n_batch"] = min(settings["n_batch"], training_context // 4)
+                    # Log memory usage
+                    self.gpu_monitor.log_memory_status()
                     
-                    try:
-                        self.model = Llama(
-                            model_path=model_path,
-                            **settings
-                        )
-                        load_time = time.time() - start_time
-                        
-                        self.model_path = model_path
-                        self.model_config = model_config
-                        
-                        logger.info(f"Model loaded successfully with {training_context} context in {load_time:.2f}s")
-                        logger.info(f"Model info: {self._get_model_info()}")
-                        
-                        # Log GPU memory status
-                        self.gpu_monitor.log_memory_status()
-                        
-                        return True
-                        
-                    except Exception as e2:
-                        logger.error(f"Failed to load even with training context limit {training_context}: {e2}")
-                
-                # If we get here, all attempts failed
-                logger.error(f"Failed to load model: {e}")
-                self.model = None
-                self.model_path = None
-                self.model_config = None
-                return False
+                    return True
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.debug(f"Failed with {context_size} tokens: {error_msg}")
+                    
+                    # Clean up failed attempt
+                    if hasattr(self, 'model') and self.model is not None:
+                        try:
+                            del self.model
+                        except:
+                            pass
+                        self.model = None
+                    
+                    # Check if error mentions a specific context limit
+                    training_context = self._extract_training_context_from_error(error_msg)
+                    if training_context and training_context < context_size:
+                        logger.info(f"Model has training context limit of {training_context} tokens")
+                        # Add this as the next size to try
+                        if training_context not in context_sizes:
+                            remaining = [c for c in context_sizes if c < context_size]
+                            context_sizes = [training_context] + remaining
+                    
+                    # Continue to next smaller size
+                    continue
+            
+            # All attempts failed
+            logger.error(f"Failed to load model with any context size. Last tried: {context_sizes[-1]}")
+            self.model = None
+            self.model_path = None
+            self.model_config = None
+            return False
                 
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
@@ -327,19 +299,6 @@ class LlamaBackend:
         except Exception as e:
             logger.error(f"Streaming generation failed: {e}")
             raise
-    
-    def _check_memory_requirements(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Check if model fits in available GPU memory
-        
-        Args:
-            model_config: Model configuration
-            
-        Returns:
-            Memory check results
-        """
-        required_memory_gb = model_config.get("memory_estimate_gb", 0)
-        return self.gpu_monitor.check_model_fits(required_memory_gb)
     
     def _get_model_info(self) -> Dict[str, Any]:
         """Get information about the loaded model"""
