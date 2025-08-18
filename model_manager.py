@@ -5,7 +5,7 @@ Unified model manager for different backend types
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from backends.factory import BackendFactory, get_available_backends
 from utils.gpu_monitor import get_gpu_monitor
@@ -19,7 +19,7 @@ class ModelManager:
     def __init__(self, config_path: str = "models_config.json"):
         """
         Initialize model manager
-        
+
         Args:
             config_path: Path to models configuration file
         """
@@ -33,7 +33,7 @@ class ModelManager:
         # Initialize backend
         self._initialize_backend()
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load configuration from file"""
         if not os.path.exists(self.config_path):
             logger.warning(f"Config file not found: {self.config_path}. Using defaults.")
@@ -48,7 +48,7 @@ class ModelManager:
             logger.error(f"Failed to load config: {e}. Using defaults.")
             return self._get_default_config()
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> dict[str, Any]:
         """Get default configuration"""
         return {
             "backend": {
@@ -125,10 +125,10 @@ class ModelManager:
     def switch_backend(self, backend_type: str) -> bool:
         """
         Switch to a different backend type
-        
+
         Args:
             backend_type: Backend type to switch to
-            
+
         Returns:
             True if successful
         """
@@ -157,11 +157,11 @@ class ModelManager:
     def load_model_by_id(self, model_id: str, backend_type: Optional[str] = None) -> bool:
         """
         Load a model by its ID
-        
+
         Args:
             model_id: Model ID from configuration
             backend_type: Optional backend type to use
-            
+
         Returns:
             True if successful
         """
@@ -172,9 +172,8 @@ class ModelManager:
         model_config = self.config["models"][model_id]
 
         # Switch backend if requested
-        if backend_type and backend_type != self.current_backend_type:
-            if not self.switch_backend(backend_type):
-                return False
+        if backend_type and backend_type != self.current_backend_type and not self.switch_backend(backend_type):
+            return False
 
         # Determine model path based on backend type
         model_path = self._get_model_path(model_config)
@@ -195,13 +194,13 @@ class ModelManager:
 
         return success
 
-    def _get_model_path(self, model_config: Dict[str, Any]) -> Optional[str]:
+    def _get_model_path(self, model_config: dict[str, Any]) -> Optional[str]:
         """
         Get the appropriate model path based on backend type
-        
+
         Args:
             model_config: Model configuration
-            
+
         Returns:
             Model path or None
         """
@@ -231,7 +230,7 @@ class ModelManager:
 
                 # Look for GGUF file
                 if os.path.exists(model_dir):
-                    for root, dirs, files in os.walk(model_dir):
+                    for root, _, files in os.walk(model_dir):
                         for file in files:
                             if file.endswith('.gguf'):
                                 gguf_path = os.path.join(root, file)
@@ -249,7 +248,7 @@ class ModelManager:
         """Get current backend type"""
         return self.current_backend_type
 
-    def get_available_models(self) -> List[Dict[str, Any]]:
+    def get_available_models(self) -> list[dict[str, Any]]:
         """Get list of available models"""
         models = []
 
@@ -268,7 +267,7 @@ class ModelManager:
 
         return models
 
-    def _is_model_compatible(self, model_config: Dict[str, Any]) -> Dict[str, bool]:
+    def _is_model_compatible(self, model_config: dict[str, Any]) -> dict[str, bool]:
         """Check which backends are compatible with a model"""
         compatible = {}
 
@@ -295,7 +294,7 @@ class ModelManager:
 
         return self.backend.generate_stream(prompt, **kwargs)
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get manager status"""
         status = {
             "current_model": self.current_model_id,

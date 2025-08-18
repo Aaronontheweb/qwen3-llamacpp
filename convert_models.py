@@ -7,7 +7,7 @@ Note: Most conversions will need to be done on the Linux server with proper tool
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class ModelConverter:
         self.config = self._load_config(config_path)
         self.models_dir = self.config.get("download_path", "./models")
 
-    def _load_config(self, config_path: str) -> Dict[str, Any]:
+    def _load_config(self, config_path: str) -> dict[str, Any]:
         """Load model configuration"""
         try:
             with open(config_path) as f:

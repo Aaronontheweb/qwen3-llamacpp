@@ -6,12 +6,10 @@ import gc
 import logging
 import time
 from collections.abc import Generator
-from typing import Any, Dict
+from typing import Any
 
 try:
     from vllm import LLM, SamplingParams
-    from vllm.engine.arg_utils import EngineArgs
-    from vllm.engine.llm_engine import LLMEngine
     VLLM_AVAILABLE = True
 except ImportError:
     VLLM_AVAILABLE = False
@@ -34,10 +32,10 @@ logger = logging.getLogger(__name__)
 class VLLMBackend(BaseBackend):
     """vLLM backend with multi-GPU support via tensor parallelism"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """
         Initialize vLLM backend
-        
+
         Args:
             config: Backend configuration with vLLM settings
         """
@@ -98,13 +96,13 @@ class VLLMBackend(BaseBackend):
             logger.warning(f"Failed to detect GPUs: {e}")
             return 0
 
-    def _calculate_optimal_settings(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
+    def _calculate_optimal_settings(self, model_config: dict[str, Any]) -> dict[str, Any]:
         """
         Calculate optimal vLLM settings based on model and hardware
-        
+
         Args:
             model_config: Model-specific configuration
-            
+
         Returns:
             Optimized settings dictionary
         """
@@ -151,14 +149,14 @@ class VLLMBackend(BaseBackend):
 
         return settings
 
-    def load_model(self, model_path: str, model_config: Dict[str, Any]) -> bool:
+    def load_model(self, model_path: str, model_config: dict[str, Any]) -> bool:
         """
         Load a model using vLLM
-        
+
         Args:
             model_path: Path to the model (HuggingFace format or model ID)
             model_config: Model configuration
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -268,11 +266,11 @@ class VLLMBackend(BaseBackend):
     def generate(self, prompt: str, **kwargs) -> str:
         """
         Generate text using vLLM
-        
+
         Args:
             prompt: Input prompt
             **kwargs: Generation parameters
-            
+
         Returns:
             Generated text
         """
@@ -315,11 +313,11 @@ class VLLMBackend(BaseBackend):
         
         Note: vLLM doesn't support true streaming in the same way as llama.cpp,
         but we can simulate it by generating in chunks
-        
+
         Args:
             prompt: Input prompt
             **kwargs: Generation parameters
-            
+
         Yields:
             Generated text chunks
         """
@@ -340,10 +338,10 @@ class VLLMBackend(BaseBackend):
             logger.error(f"Streaming generation failed: {e}")
             raise
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Get backend status
-        
+
         Returns:
             Status dictionary
         """
@@ -366,7 +364,7 @@ class VLLMBackend(BaseBackend):
                     "tensor_parallel_size": self.vllm_config["tensor_parallel_size"],
                     "gpu_memory_utilization": self.vllm_config["gpu_memory_utilization"]
                 }
-            except:
+            except Exception:
                 pass
 
         return status
@@ -380,6 +378,6 @@ class VLLMBackend(BaseBackend):
         if self.llm_engine:
             try:
                 return self.llm_engine.llm_engine.model_config.max_model_len
-            except:
+            except Exception:
                 pass
         return super().get_context_window()

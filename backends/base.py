@@ -5,7 +5,7 @@ Base backend interface for model serving
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 class BaseBackend(ABC):
     """Abstract base class for all backend implementations"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """
         Initialize backend with configuration
-        
+
         Args:
             config: Backend configuration dictionary
         """
@@ -26,14 +26,14 @@ class BaseBackend(ABC):
         self.model_config = None
 
     @abstractmethod
-    def load_model(self, model_path: str, model_config: Dict[str, Any]) -> bool:
+    def load_model(self, model_path: str, model_config: dict[str, Any]) -> bool:
         """
         Load a model for inference
-        
+
         Args:
             model_path: Path to the model
             model_config: Model-specific configuration
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -48,11 +48,11 @@ class BaseBackend(ABC):
     def generate(self, prompt: str, **kwargs) -> str:
         """
         Generate text from a prompt
-        
+
         Args:
             prompt: Input prompt
             **kwargs: Generation parameters
-            
+
         Returns:
             Generated text
         """
@@ -62,21 +62,21 @@ class BaseBackend(ABC):
     def generate_stream(self, prompt: str, **kwargs) -> Generator[str, None, None]:
         """
         Generate text with streaming
-        
+
         Args:
             prompt: Input prompt
             **kwargs: Generation parameters
-            
+
         Yields:
             Generated text chunks
         """
         pass
 
     @abstractmethod
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Get backend status and information
-        
+
         Returns:
             Status dictionary
         """
@@ -103,11 +103,11 @@ class BaseBackend(ABC):
     def validate_request(self, prompt: str, **kwargs) -> tuple[bool, Optional[str]]:
         """
         Validate a generation request
-        
+
         Args:
             prompt: Input prompt
             **kwargs: Generation parameters
-            
+
         Returns:
             Tuple of (is_valid, error_message)
         """

@@ -3,7 +3,7 @@ Backend factory for creating different backend implementations
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, ClassVar
 
 from .base import BaseBackend
 
@@ -14,13 +14,13 @@ class BackendFactory:
     """Factory class for creating backend instances"""
 
     # Registry of available backends
-    _backends = {}
+    _backends: ClassVar[dict] = {}
 
     @classmethod
     def register_backend(cls, name: str, backend_class: type):
         """
         Register a new backend type
-        
+
         Args:
             name: Backend name
             backend_class: Backend class
@@ -29,17 +29,17 @@ class BackendFactory:
         logger.info(f"Registered backend: {name}")
 
     @classmethod
-    def create_backend(cls, backend_type: str, config: Dict[str, Any]) -> BaseBackend:
+    def create_backend(cls, backend_type: str, config: dict[str, Any]) -> BaseBackend:
         """
         Create a backend instance
-        
+
         Args:
             backend_type: Type of backend to create
             config: Backend configuration
-            
+
         Returns:
             Backend instance
-            
+
         Raises:
             ValueError: If backend type is not supported
         """
@@ -100,7 +100,7 @@ class BackendFactory:
     def get_available_backends(cls) -> list[str]:
         """
         Get list of available backend types
-        
+
         Returns:
             List of backend names
         """
@@ -110,13 +110,13 @@ class BackendFactory:
         return list(cls._backends.keys())
 
     @classmethod
-    def get_backend_info(cls, backend_type: str) -> Dict[str, Any]:
+    def get_backend_info(cls, backend_type: str) -> dict[str, Any]:
         """
         Get information about a specific backend
-        
+
         Args:
             backend_type: Backend type
-            
+
         Returns:
             Backend information dictionary
         """
@@ -143,20 +143,20 @@ class BackendFactory:
             temp_backend = backend_class({})
             info["supports_multi_gpu"] = temp_backend.supports_multi_gpu()
             info["supports_streaming"] = temp_backend.supports_streaming()
-        except:
+        except Exception:
             pass
 
         return info
 
 
-def create_backend(backend_type: str, config: Dict[str, Any]) -> BaseBackend:
+def create_backend(backend_type: str, config: dict[str, Any]) -> BaseBackend:
     """
     Convenience function to create a backend
-    
+
     Args:
         backend_type: Type of backend to create
         config: Backend configuration
-        
+
     Returns:
         Backend instance
     """
@@ -166,7 +166,7 @@ def create_backend(backend_type: str, config: Dict[str, Any]) -> BaseBackend:
 def get_available_backends() -> list[str]:
     """
     Convenience function to get available backends
-    
+
     Returns:
         List of backend names
     """
