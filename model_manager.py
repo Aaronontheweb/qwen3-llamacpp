@@ -71,6 +71,7 @@ class ModelManagerCLI:
         table.add_column("Name", style="green")
         table.add_column("Size", style="yellow")
         table.add_column("Type", style="blue")
+        table.add_column("Quantization", style="white")
         table.add_column("Status", style="magenta")
         table.add_column("Memory (GB)", style="red")
         
@@ -81,14 +82,30 @@ class ModelManagerCLI:
             # Check if model is downloaded
             model_name = model_config["name"]
             download_path = self.config["download_path"]
-            downloaded = is_model_downloaded(model_name, download_path)
+            
+            # Check for specific quantization if specified
+            quantization = model_config.get("quantization", None)
+            if quantization:
+                # Check if the specific quantization file exists
+                model_dir = os.path.join(download_path, model_name.replace("/", "_"))
+                downloaded = False
+                if os.path.exists(model_dir):
+                    for file in os.listdir(model_dir):
+                        if file.endswith('.gguf') and quantization in file:
+                            downloaded = True
+                            break
+            else:
+                downloaded = is_model_downloaded(model_name, download_path)
             
             # Check if it's the active model
             active = model_id == self.config.get("active_model")
             
             status = []
             if downloaded:
-                status.append("✓ Downloaded")
+                if quantization:
+                    status.append(f"✓ {quantization}")
+                else:
+                    status.append("✓ Downloaded")
             if active:
                 status.append("✓ Active")
             
@@ -99,8 +116,9 @@ class ModelManagerCLI:
                 model_name,
                 model_config["size"],
                 model_config["type"],
+                model_config.get("quantization", "Auto"),
                 status_text,
-                str(model_config["memory_estimate_gb"])
+                str(model_config.get("memory_estimate_gb", "N/A"))
             ]
             
             if show_details:
@@ -119,9 +137,18 @@ class ModelManagerCLI:
         model_config = self.config["models"][model_id]
         model_name = model_config["name"]
         download_path = self.config["download_path"]
+        quantization = model_config.get("quantization", None)
         
-        # Check if already downloaded
-        if is_model_downloaded(model_name, download_path) and not force:
+        # Check if specific quantization is already downloaded
+        if quantization and not force:
+            model_dir = os.path.join(download_path, model_name.replace("/", "_"))
+            if os.path.exists(model_dir):
+                for file in os.listdir(model_dir):
+                    if file.endswith('.gguf') and quantization in file:
+                        console.print(f"[yellow]Model {model_id} with {quantization} is already downloaded[/yellow]")
+                        return True
+                console.print(f"[blue]Model {model_id} exists but {quantization} quantization not found. Downloading...[/blue]")
+        elif is_model_downloaded(model_name, download_path) and not force:
             console.print(f"[yellow]Model {model_id} is already downloaded[/yellow]")
             return True
         
@@ -137,13 +164,14 @@ class ModelManagerCLI:
             if estimated_time > 0:
                 console.print(f"Estimated download time: {estimated_time:.1f} minutes")
         
-        # Check memory requirements
-        memory_check = self.gpu_monitor.check_model_fits(model_config["memory_estimate_gb"])
-        if not memory_check[0]:  # memory_check returns (fits, details)
-            console.print(f"[red]Warning: Model requires {model_config['memory_estimate_gb']}GB but only "
-                         f"{memory_check[1]['available_memory_mb']/1024:.1f}GB available[/red]")
-            if not click.confirm("Continue with download anyway?"):
-                return False
+        # Check memory requirements if specified
+        if "memory_estimate_gb" in model_config:
+            memory_check = self.gpu_monitor.check_model_fits(model_config["memory_estimate_gb"])
+            if not memory_check[0]:  # memory_check returns (fits, details)
+                console.print(f"[red]Warning: Model requires {model_config['memory_estimate_gb']}GB but only "
+                             f"{memory_check[1]['available_memory_mb']/1024:.1f}GB available[/red]")
+                if not click.confirm("Continue with download anyway?"):
+                    return False
         
         # Download model
         try:
@@ -199,25 +227,39 @@ class ModelManagerCLI:
                     else:
                         file_sizes[gguf_file] = 15.0  # Default estimate
             
-            # Sort files by quality (best to worst) and find the best that fits
-            # Quality order: Q4_K > Q5_K > Q6_K > Q8_0 > BF16 (avoid BF16 for most setups)
-            quality_order = ['Q4_K', 'Q5_K', 'Q6_K', 'Q8_0', 'BF16']
+            # Check if model config specifies a quantization
+            preferred_quant = model_config.get("quantization", None)
             
             selected_file = None
             selected_quality = None
             
-            for quality in quality_order:
-                matching_files = [f for f in gguf_files if quality in f]
-                for file in matching_files:
-                    if file in file_sizes:
-                        file_size_gb = file_sizes[file]
-                        # Check if file fits in available memory (with 2GB buffer for safety)
-                        if file_size_gb <= (available_memory_gb - 2.0):
-                            selected_file = file
-                            selected_quality = quality
-                            break
-                if selected_file:
-                    break
+            if preferred_quant:
+                # Look for the specific quantization requested
+                matching_files = [f for f in gguf_files if preferred_quant in f]
+                if matching_files:
+                    selected_file = matching_files[0]  # Take the first match
+                    selected_quality = preferred_quant
+                    console.print(f"[green]Using requested quantization: {preferred_quant}[/green]")
+                else:
+                    console.print(f"[yellow]Warning: Requested quantization {preferred_quant} not found[/yellow]")
+            
+            if not selected_file:
+                # Fall back to automatic selection
+                # Quality order: Q4_K > Q3_K > Q5_K > Q6_K > Q8_0 > BF16 
+                quality_order = ['Q4_K', 'Q3_K_S', 'Q3_K_M', 'Q5_K', 'Q6_K', 'Q8_0', 'BF16']
+                
+                for quality in quality_order:
+                    matching_files = [f for f in gguf_files if quality in f]
+                    for file in matching_files:
+                        if file in file_sizes:
+                            file_size_gb = file_sizes[file]
+                            # Check if file fits in available memory (with 2GB buffer for safety)
+                            if file_size_gb <= (available_memory_gb - 2.0):
+                                selected_file = file
+                                selected_quality = quality
+                                break
+                    if selected_file:
+                        break
             
             # If no file fits, select the smallest available
             if not selected_file:
@@ -230,7 +272,8 @@ class ModelManagerCLI:
             file_size = file_sizes.get(filename, "unknown")
             console.print(f"[green]Selected: {filename} ({file_size:.1f}GB, {selected_quality} quality)[/green]")
             
-            # Download the specific GGUF file
+            # Download ONLY the specific GGUF file (not all files!)
+            console.print(f"[cyan]Downloading file: {filename}[/cyan]")
             model_file = hf_hub_download(
                 repo_id=model_name,
                 filename=filename,

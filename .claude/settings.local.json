@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:huggingface.co)",
+      "mcp__memorizer__store",
+      "Bash(git add:*)"
+    ],
+    "deny": []
+  }
+}
