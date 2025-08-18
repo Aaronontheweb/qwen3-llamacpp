@@ -44,10 +44,15 @@ jobs:
     - name: Install development dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ruff flake8 mypy pytest
-        # Install main requirements except llama-cpp-python (requires GPU)
-        grep -v llama-cpp-python requirements.txt > requirements-no-gpu.txt || true
-        pip install -r requirements-no-gpu.txt || true
+        # Use CI-specific requirements that exclude GPU dependencies
+        if [ -f requirements-ci.txt ]; then
+          pip install -r requirements-ci.txt
+        else
+          # Fallback to filtering requirements.txt if CI file doesn't exist
+          pip install ruff flake8 mypy pytest
+          grep -v -E '(llama-cpp-python|vllm|torch|transformers|accelerate|bitsandbytes|pynvml)' requirements.txt > requirements-no-gpu.txt || true
+          pip install -r requirements-no-gpu.txt || true
+        fi
     
     - name: Check Python syntax
       run: |
@@ -80,8 +85,8 @@ jobs:
         python_files = list(Path('.').glob('**/*.py'))
         
         # Modules to skip (GPU/model dependent)
-        skip_modules = {'llama_cpp', 'torch', 'tensorflow', 'transformers'}
-        skip_files = {'llama_backend.py', 'test_local.py'}  # Files that directly use llama-cpp
+        skip_modules = {'llama_cpp', 'torch', 'tensorflow', 'transformers', 'vllm', 'accelerate', 'pynvml'}
+        skip_files = {'llama_backend.py', 'test_local.py', 'vllm_backend.py', 'test_vllm_backend.py'}  # Files that directly use GPU libraries
         
         errors = []
         for file in python_files:
