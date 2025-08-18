@@ -276,7 +276,7 @@ class ModelManager:
 
         # llama.cpp needs GGUF files
         compatible["llama_cpp"] = bool(model_config.get("gguf_name") or
-                                      (model_config.get("name") and "GGUF" in model_config.get("name", "")))
+                                        (model_config.get("name") and "GGUF" in model_config.get("name", "")))
 
         return compatible
 

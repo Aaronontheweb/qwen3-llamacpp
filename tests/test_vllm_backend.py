@@ -12,13 +12,12 @@ from pathlib import Path
 
 import pytest
 import torch
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from backends.factory import BackendFactory
 from backends.vllm_backend import VLLMBackend
 from model_manager import ModelManager
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -266,7 +265,6 @@ def run_basic_tests():
 
     # Test model manager
     try:
-        from model_manager import ModelManager
         manager = ModelManager()
         print(f"✓ Model manager initialized with backend: {manager.current_backend_type}")
     except Exception as e:

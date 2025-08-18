@@ -72,7 +72,7 @@ class VLLMBackend(BaseBackend):
         # Adjust tensor parallel size based on GPU availability
         if self.vllm_config["tensor_parallel_size"] > self.gpu_count:
             logger.warning(f"Requested tensor_parallel_size ({self.vllm_config['tensor_parallel_size']}) "
-                         f"exceeds available GPUs ({self.gpu_count}). Adjusting to {self.gpu_count}")
+                           f"exceeds available GPUs ({self.gpu_count}). Adjusting to {self.gpu_count}")
             self.vllm_config["tensor_parallel_size"] = max(1, self.gpu_count)
 
         logger.info(f"vLLM Backend initialized with {self.gpu_count} GPU(s)")
@@ -233,8 +233,8 @@ class VLLMBackend(BaseBackend):
             logger.info("GPU Memory Distribution:")
             for gpu in gpu_info:
                 logger.info(f"  GPU {gpu['index']}: {gpu['used_memory_mb']:.0f}MB / "
-                          f"{gpu['total_memory_mb']:.0f}MB "
-                          f"({gpu['memory_utilization_percent']:.1f}%)")
+                            f"{gpu['total_memory_mb']:.0f}MB "
+                            f"({gpu['memory_utilization_percent']:.1f}%)")
         except Exception as e:
             logger.debug(f"Could not log GPU distribution: {e}")
 
