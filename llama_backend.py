@@ -34,13 +34,14 @@ class LlamaBackend:
         
         # llama.cpp settings
         self.llama_settings = {
-            "n_gpu_layers": -1,  # Use all available GPUs
+            "n_gpu_layers": -1,  # Use all available GPUs (default, can be overridden)
             "n_ctx": 262144,     # Context length - 256k tokens (let users decide)
             "n_batch": 512,      # Batch size
             "n_threads": os.cpu_count(),  # Use all CPU threads
             "verbose": False,    # Disable verbose output
             "use_mmap": True,    # Use memory mapping
             "use_mlock": False,  # Don't lock memory
+            "offload_kqv": True, # Offload KQV to GPU when available
         }
         
         # Update settings from config
