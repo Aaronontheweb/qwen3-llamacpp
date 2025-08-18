@@ -2,16 +2,17 @@
 Base backend interface for model serving
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Generator, Union
 import logging
+from abc import ABC, abstractmethod
+from collections.abc import Generator
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class BaseBackend(ABC):
     """Abstract base class for all backend implementations"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize backend with configuration
@@ -23,7 +24,7 @@ class BaseBackend(ABC):
         self.model = None
         self.model_path = None
         self.model_config = None
-        
+
     @abstractmethod
     def load_model(self, model_path: str, model_config: Dict[str, Any]) -> bool:
         """
@@ -37,12 +38,12 @@ class BaseBackend(ABC):
             True if successful, False otherwise
         """
         pass
-    
+
     @abstractmethod
     def unload_model(self):
         """Unload the current model and free resources"""
         pass
-    
+
     @abstractmethod
     def generate(self, prompt: str, **kwargs) -> str:
         """
@@ -56,7 +57,7 @@ class BaseBackend(ABC):
             Generated text
         """
         pass
-    
+
     @abstractmethod
     def generate_stream(self, prompt: str, **kwargs) -> Generator[str, None, None]:
         """
@@ -70,7 +71,7 @@ class BaseBackend(ABC):
             Generated text chunks
         """
         pass
-    
+
     @abstractmethod
     def get_status(self) -> Dict[str, Any]:
         """
@@ -80,25 +81,25 @@ class BaseBackend(ABC):
             Status dictionary
         """
         pass
-    
+
     def cleanup(self):
         """Clean up resources"""
         self.unload_model()
-    
+
     def supports_streaming(self) -> bool:
         """Check if backend supports streaming generation"""
         return True
-    
+
     def supports_multi_gpu(self) -> bool:
         """Check if backend supports multi-GPU operation"""
         return False
-    
+
     def get_context_window(self) -> int:
         """Get the maximum context window size"""
         if self.model_config:
             return self.model_config.get("max_context_tokens", 4096)
         return 4096
-    
+
     def validate_request(self, prompt: str, **kwargs) -> tuple[bool, Optional[str]]:
         """
         Validate a generation request
@@ -112,16 +113,16 @@ class BaseBackend(ABC):
         """
         if not self.model:
             return False, "No model loaded"
-        
+
         if not prompt:
             return False, "Empty prompt"
-        
+
         # Check token limits if available
         max_tokens = kwargs.get("max_tokens", 2048)
         context_window = self.get_context_window()
-        
+
         # Basic validation - can be extended by subclasses
         if max_tokens > context_window:
             return False, f"max_tokens ({max_tokens}) exceeds context window ({context_window})"
-        
+
         return True, None

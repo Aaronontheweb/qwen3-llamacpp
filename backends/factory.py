@@ -3,7 +3,8 @@ Backend factory for creating different backend implementations
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict
+
 from .base import BaseBackend
 
 logger = logging.getLogger(__name__)
@@ -11,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 class BackendFactory:
     """Factory class for creating backend instances"""
-    
+
     # Registry of available backends
     _backends = {}
-    
+
     @classmethod
     def register_backend(cls, name: str, backend_class: type):
         """
@@ -26,7 +27,7 @@ class BackendFactory:
         """
         cls._backends[name] = backend_class
         logger.info(f"Registered backend: {name}")
-    
+
     @classmethod
     def create_backend(cls, backend_type: str, config: Dict[str, Any]) -> BaseBackend:
         """
@@ -45,32 +46,32 @@ class BackendFactory:
         # Lazy import backends to avoid circular dependencies
         if not cls._backends:
             cls._initialize_backends()
-        
+
         backend_type = backend_type.lower()
-        
+
         if backend_type not in cls._backends:
             available = ", ".join(cls._backends.keys())
             raise ValueError(f"Unknown backend type: {backend_type}. Available: {available}")
-        
+
         backend_class = cls._backends[backend_type]
-        
+
         # Add backend type to config for reference
         config["backend_type"] = backend_type
-        
+
         logger.info(f"Creating {backend_type} backend")
         return backend_class(config)
-    
+
     @classmethod
     def _initialize_backends(cls):
         """Initialize available backends with lazy imports"""
-        
+
         # Try to import vLLM backend
         try:
             from .vllm_backend import VLLMBackend
             cls.register_backend("vllm", VLLMBackend)
         except ImportError as e:
             logger.warning(f"vLLM backend not available: {e}")
-        
+
         # Try to import llama.cpp backend (keeping for compatibility)
         try:
             from .llama_cpp_backend import LlamaCppBackend
@@ -78,7 +79,7 @@ class BackendFactory:
             cls.register_backend("llama.cpp", LlamaCppBackend)  # Alias
         except ImportError as e:
             logger.debug(f"llama.cpp backend not available: {e}")
-        
+
         # Try to import Transformers backend
         try:
             from .transformers_backend import TransformersBackend
@@ -86,7 +87,7 @@ class BackendFactory:
             cls.register_backend("hf", TransformersBackend)  # Alias
         except ImportError as e:
             logger.debug(f"Transformers backend not available: {e}")
-        
+
         # Try to import ExLlama backend
         try:
             from .exllama_backend import ExLlamaBackend
@@ -94,7 +95,7 @@ class BackendFactory:
             cls.register_backend("exllamav2", ExLlamaBackend)  # Alias
         except ImportError as e:
             logger.debug(f"ExLlama backend not available: {e}")
-    
+
     @classmethod
     def get_available_backends(cls) -> list[str]:
         """
@@ -105,9 +106,9 @@ class BackendFactory:
         """
         if not cls._backends:
             cls._initialize_backends()
-        
+
         return list(cls._backends.keys())
-    
+
     @classmethod
     def get_backend_info(cls, backend_type: str) -> Dict[str, Any]:
         """
@@ -121,14 +122,14 @@ class BackendFactory:
         """
         if not cls._backends:
             cls._initialize_backends()
-        
+
         backend_type = backend_type.lower()
-        
+
         if backend_type not in cls._backends:
             return {"error": f"Unknown backend: {backend_type}"}
-        
+
         backend_class = cls._backends[backend_type]
-        
+
         info = {
             "name": backend_type,
             "class": backend_class.__name__,
@@ -136,7 +137,7 @@ class BackendFactory:
             "supports_streaming": True,  # Most backends support streaming
             "supports_multi_gpu": False  # Default, overridden by backend
         }
-        
+
         # Try to get more info from the backend class
         try:
             temp_backend = backend_class({})
@@ -144,7 +145,7 @@ class BackendFactory:
             info["supports_streaming"] = temp_backend.supports_streaming()
         except:
             pass
-        
+
         return info
 
 

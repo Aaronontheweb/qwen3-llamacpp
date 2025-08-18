@@ -4,24 +4,23 @@ OpenAI-compatible API server for Qwen3 multi-GPU server
 """
 
 import json
-import logging
+import os
 import time
 import uuid
-from typing import Dict, List, Optional, Any, Generator, Union
-from datetime import datetime
-import os
+from collections.abc import Generator
+from typing import Any, Dict, List, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
-from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from pydantic import BaseModel, Field
 
-from utils.logging_config import setup_logging
-from utils.gpu_monitor import get_gpu_monitor
 from model_manager import get_model_manager
 from tool_parser import get_tool_parser, get_tool_validator
+from utils.gpu_monitor import get_gpu_monitor
+from utils.logging_config import setup_logging
 
 # Set up logging
 logger = setup_logging()
@@ -54,7 +53,7 @@ class ChatCompletionRequest(BaseModel):
     model: str = Field(..., description="Model to use")
     messages: List[ChatMessage] = Field(..., description="Chat messages")
     tools: Optional[List[Tool]] = Field(None, description="Available tools")
-    
+
     tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(None, description='Tool choice ("auto", "none", or specific function)')
     temperature: Optional[float] = Field(0.7, description="Sampling temperature")
     max_tokens: Optional[int] = Field(4096, description="Maximum tokens to generate")
@@ -82,26 +81,26 @@ class ModelInfo(BaseModel):
 
 class TemplateManager:
     """Manages Jinja2 templates for prompt generation"""
-    
+
     def __init__(self, template_dir: str = "templates"):
         self.template_dir = template_dir
         self.env = Environment(
             loader=FileSystemLoader(template_dir),
             autoescape=select_autoescape(['html', 'xml'])
         )
-        
+
         try:
             self.tool_template = self.env.get_template('qwen_tool_calling.j2')
             logger.info(f"Loaded Jinja template from {template_dir}/qwen_tool_calling.j2")
         except Exception as e:
             logger.error(f"Failed to load Jinja template: {e}")
             self.tool_template = None
-    
+
     def render_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None, add_generation_prompt: bool = True) -> str:
         """Render prompt using Jinja template"""
         if not self.tool_template:
             raise RuntimeError("Jinja template not loaded")
-        
+
         try:
             return self.tool_template.render(
                 messages=messages,
@@ -111,18 +110,18 @@ class TemplateManager:
         except Exception as e:
             logger.error(f"Template rendering failed: {e}")
             raise RuntimeError(f"Template rendering failed: {e}")
-    
+
     def is_available(self) -> bool:
         """Check if template system is available"""
         return self.tool_template is not None
 
 class Qwen3APIServer:
     """OpenAI-compatible API server for Qwen3 models"""
-    
+
     def __init__(self, config_path: str = "models_config.json"):
         # Clear server logs on startup for cleaner debugging
         self._clear_server_logs()
-        
+
         self.config_path = config_path
         self.config = self._load_config()
         self.model_manager = get_model_manager(self.config_path)
@@ -130,30 +129,30 @@ class Qwen3APIServer:
         self.tool_parser = get_tool_parser()
         self.tool_validator = get_tool_validator()
         self.gpu_monitor = get_gpu_monitor()
-        
+
         # Initialize template manager
         template_dir = self.config.get("server", {}).get("template_dir", "templates")
         self.template_manager = TemplateManager(template_dir)
-        
+
         # Download tracking
         self.download_status = {}
-        
+
         # Load active model
         active_model = self.config.get("active_model")
         if active_model:
             self.model_manager.load_model_by_id(active_model)
-        
+
         # Create FastAPI app
         self.app = FastAPI(
             title="Qwen3 Multi-GPU Server",
             description="OpenAI-compatible API server for Qwen3 models with multi-GPU support",
             version="1.0.0"
         )
-        
+
         # Add validation error handler
         from fastapi.exceptions import RequestValidationError
         from fastapi.responses import JSONResponse
-        
+
         @self.app.exception_handler(RequestValidationError)
         async def validation_exception_handler(request: Request, exc: RequestValidationError):
             try:
@@ -172,13 +171,12 @@ class Qwen3APIServer:
             allow_methods=["*"],
             allow_headers=["*"],
         )
-        
+
         # Set up routes
         self._setup_routes()
-    
+
     def _clear_server_logs(self):
         """Clear server logs on startup for cleaner debugging"""
-        import os
         log_files = ["logs/qwen3_server.log", "debug_dump.json"]
         for log_file in log_files:
             try:
@@ -187,11 +185,11 @@ class Qwen3APIServer:
                     print(f"🧹 Cleared {log_file}")
             except Exception as e:
                 print(f"⚠️  Could not clear {log_file}: {e}")
-    
+
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration file"""
         try:
-            with open(self.config_path, 'r') as f:
+            with open(self.config_path) as f:
                 return json.load(f)
         except FileNotFoundError:
             logger.error(f"Configuration file not found: {self.config_path}")
@@ -199,10 +197,10 @@ class Qwen3APIServer:
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in configuration file: {e}")
             raise
-    
+
     def _setup_routes(self):
         """Set up API routes"""
-        
+
         @self.app.get("/")
         async def root():
             """Root endpoint"""
@@ -211,7 +209,7 @@ class Qwen3APIServer:
                 "version": "1.0.0",
                 "status": "running"
             }
-        
+
         @self.app.get("/v1/models")
         async def list_models():
             """List available models"""
@@ -230,29 +228,29 @@ class Qwen3APIServer:
                     }
                 }
                 models.append(model_info)
-            
+
             return {
                 "object": "list",
                 "data": models
             }
-        
+
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: ChatCompletionRequest):
             """Chat completions endpoint"""
             try:
                 # Debug: Log essential request info only
                 tool_names = [t.function.name for t in request.tools] if request.tools else []
-                logger.info(f"=== NEW REQUEST ===")
+                logger.info("=== NEW REQUEST ===")
                 logger.info(f"Tools available: {tool_names}")
                 logger.info(f"Stream: {request.stream}, Max tokens: {request.max_tokens}")
-                
+
                 # Check if model is loaded
                 if not self.backend.model:
                     raise HTTPException(status_code=503, detail="No model loaded")
-                
+
                 # Prepare messages
                 messages = [msg.model_dump() for msg in request.messages]
-                
+
                 # Prepare tools
                 tools = None
                 if request.tools:
@@ -260,20 +258,20 @@ class Qwen3APIServer:
                     # Debug: Log tool names
                     tool_names = [t.get("function", {}).get("name", "unknown") for t in tools]
                     logger.info(f"Tools provided by client: {tool_names}")
-                
+
                 # Generate prompt
                 prompt = self._create_prompt(messages, tools)
-                
+
                 # Debug: Log prompt length only
-                logger.info(f"=== PROMPT READY ===")
+                logger.info("=== PROMPT READY ===")
                 logger.info(f"Prompt length: {len(prompt)} chars ({len(prompt.split())} tokens approx)")
-                
+
                 # Check context window usage and adjust max_tokens if needed
                 prompt_tokens = len(prompt.split())  # Approximate token count
                 current_model_config = self.config["models"].get(self.config.get("active_model", ""), {})
                 effective_context = current_model_config.get("effective_context_tokens", 32768)
                 max_context = current_model_config.get("max_context_tokens", 262144)
-                
+
                 # Check actual runtime context from loaded model
                 if hasattr(self.backend, 'model') and self.backend.model:
                     actual_context = self.backend.model.n_ctx()
@@ -281,49 +279,49 @@ class Qwen3APIServer:
                     if actual_context < max_context:
                         logger.warning(f"Model loaded with reduced context ({actual_context}) due to memory constraints")
                         max_context = actual_context  # Use the actual context, not config
-                
+
                 # Auto-adjust max_tokens to fit in context window
                 available_tokens = max_context - prompt_tokens - 100  # Reserve 100 tokens for safety
                 if request.max_tokens > available_tokens:
                     original_max = request.max_tokens
                     request.max_tokens = max(512, available_tokens)  # At least 512 tokens for response
                     logger.warning(f"Reduced max_tokens from {original_max} to {request.max_tokens} to fit context window ({max_context} total, {prompt_tokens} prompt)")
-                
+
                 if prompt_tokens > effective_context:
                     logger.warning(f"Prompt length ({prompt_tokens} tokens) exceeds effective context window ({effective_context} tokens). Model performance may degrade.")
-                
+
                 if prompt_tokens > max_context:
                     raise HTTPException(status_code=400, detail=f"Prompt length ({prompt_tokens} tokens) exceeds maximum supported context window ({max_context} tokens)")
-                
+
                 # Prepare generation parameters
                 generation_params = {
                     "temperature": request.temperature,
                     "max_tokens": request.max_tokens,
                     "top_p": request.top_p,
                 }
-                
+
                 # Debug: Log key generation parameters
-                logger.info(f"=== GENERATION ===")
+                logger.info("=== GENERATION ===")
                 logger.info(f"Max tokens: {request.max_tokens}, Temp: {request.temperature}")
-                
+
                 if request.stop:
                     generation_params["stop"] = request.stop
-                
+
                 # Generate response
                 if request.stream:
-                    logger.info(f"=== USING STREAMING RESPONSE ===")
+                    logger.info("=== USING STREAMING RESPONSE ===")
                     return StreamingResponse(
                         self._generate_stream(prompt, generation_params),
                         media_type="text/event-stream"
                     )
                 else:
-                    logger.info(f"=== USING NON-STREAMING RESPONSE ===")
+                    logger.info("=== USING NON-STREAMING RESPONSE ===")
                     return await self._generate_completion(prompt, generation_params, tools)
-                    
+
             except Exception as e:
                 logger.error(f"Chat completion error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.post("/admin/switch_model")
         async def switch_model(request: ModelSwitchRequest):
             """Switch to a different model"""
@@ -332,17 +330,17 @@ class Qwen3APIServer:
                 model_config = self.config["models"].get(request.model_id)
                 if not model_config:
                     raise HTTPException(status_code=404, detail=f"Model {request.model_id} not found in config")
-                
+
                 from utils.model_utils import is_model_downloaded
                 if not is_model_downloaded(model_config["name"], self.config["download_path"]):
                     # Model not downloaded - start download in background
                     background_tasks.add_task(self._download_model_background, request.model_id)
                     return {
-                        "status": "downloading", 
+                        "status": "downloading",
                         "message": f"Model {request.model_id} is being downloaded. Use /admin/download_status to check progress.",
                         "model_id": request.model_id
                     }
-                
+
                 # Model is downloaded, try to load it
                 success = self.model_manager.load_model_by_id(request.model_id)
                 if success:
@@ -350,15 +348,15 @@ class Qwen3APIServer:
                     # Save config
                     with open(self.config_path, 'w') as f:
                         json.dump(self.config, f, indent=2)
-                    
+
                     return {"status": "success", "model": request.model_id}
                 else:
                     raise HTTPException(status_code=400, detail=f"Failed to load model: {request.model_id}")
-                    
+
             except Exception as e:
                 logger.error(f"Model switch error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.get("/admin/model_status")
         async def model_status():
             """Get current model and system status"""
@@ -368,7 +366,7 @@ class Qwen3APIServer:
             except Exception as e:
                 logger.error(f"Status error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.get("/admin/gpu_usage")
         async def gpu_usage():
             """Get GPU memory and utilization"""
@@ -377,7 +375,7 @@ class Qwen3APIServer:
             except Exception as e:
                 logger.error(f"GPU usage error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.post("/admin/download_model")
         async def download_model(request: ModelSwitchRequest):
             """Download a model on-demand"""
@@ -386,24 +384,24 @@ class Qwen3APIServer:
                 model_config = self.config["models"].get(request.model_id)
                 if not model_config:
                     raise HTTPException(status_code=404, detail=f"Model {request.model_id} not found in config")
-                
+
                 from utils.model_utils import is_model_downloaded
                 if is_model_downloaded(model_config["name"], self.config["download_path"]):
                     return {"status": "success", "message": f"Model {request.model_id} is already downloaded"}
-                
+
                 # Start download in background
                 background_tasks.add_task(self._download_model_background, request.model_id)
-                
+
                 return {
-                    "status": "started", 
+                    "status": "started",
                     "message": f"Download started for {request.model_id}",
                     "model_id": request.model_id
                 }
-                    
+
             except Exception as e:
                 logger.error(f"Download error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.get("/admin/download_status")
         async def download_status():
             """Get download status for all models"""
@@ -412,33 +410,33 @@ class Qwen3APIServer:
             except Exception as e:
                 logger.error(f"Download status error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-    
+
     async def _download_model_background(self, model_id: str):
         """Download a model in the background"""
         try:
             self.download_status[model_id] = {"status": "downloading", "progress": 0}
-            
+
             # Create a temporary model manager for downloading
             temp_manager = get_model_manager(self.config)
-            
+
             # Download the model
             success = temp_manager.download_model(model_id)
-            
+
             if success:
                 self.download_status[model_id] = {"status": "completed", "progress": 100}
                 logger.info(f"Model {model_id} downloaded successfully")
             else:
                 self.download_status[model_id] = {"status": "failed", "progress": 0}
                 logger.error(f"Failed to download model {model_id}")
-                
+
         except Exception as e:
             self.download_status[model_id] = {"status": "failed", "progress": 0, "error": str(e)}
             logger.error(f"Download error for {model_id}: {e}")
-    
+
     def _create_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
         """Create prompt from messages and tools using Jinja template or legacy method"""
         use_jinja = self.config.get("server", {}).get("use_jinja_template", True)
-        
+
         if use_jinja and self.template_manager.is_available():
             try:
                 return self.template_manager.render_prompt(messages, tools, add_generation_prompt=True)
@@ -447,16 +445,16 @@ class Qwen3APIServer:
                 return self._create_prompt_legacy(messages, tools)
         else:
             return self._create_prompt_legacy(messages, tools)
-    
+
     def _create_prompt_legacy(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
         """Legacy prompt creation method (fallback)"""
         prompt_parts = []
-        
+
         # Add system message if present
         if messages and messages[0]["role"] == "system":
             prompt_parts.append(f"<|im_start|>system\n{messages[0]['content']}<|im_end|>")
             messages = messages[1:]
-        
+
         # Add conversation messages
         for message in messages:
             role = message["role"]
@@ -469,70 +467,70 @@ class Qwen3APIServer:
                         combined_parts.append(part.get("text", ""))
                 content = "".join(combined_parts)
             prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
-        
+
         # Add tools if provided
         if tools:
             prompt_parts.append("\n\nYou have access to the following functions:\n\n")
             prompt_parts.append("<tools>")
-            
+
             for tool in tools:
                 function = tool["function"]
-                prompt_parts.append(f"\n<function>")
+                prompt_parts.append("\n<function>")
                 prompt_parts.append(f"<name>{function['name']}</name>")
                 prompt_parts.append(f"<description>{function['description']}</description>")
                 prompt_parts.append("<parameters>")
-                
+
                 for param_name, param_info in function["parameters"]["properties"].items():
-                    prompt_parts.append(f"<parameter>")
+                    prompt_parts.append("<parameter>")
                     prompt_parts.append(f"<name>{param_name}</name>")
                     prompt_parts.append(f"<type>{param_info['type']}</type>")
                     if "description" in param_info:
                         prompt_parts.append(f"<description>{param_info['description']}</description>")
                     prompt_parts.append("</parameter>")
-                
+
                 prompt_parts.append("</parameters>")
                 prompt_parts.append("</function>")
-            
+
             prompt_parts.append("\n</tools>")
-        
+
         # Add assistant prefix
         prompt_parts.append("\n<|im_start|>assistant\n")
-        
+
         return "".join(prompt_parts)
-    
+
     async def _generate_completion(self, prompt: str, generation_params: Dict, tools: Optional[List[Dict]] = None) -> ChatCompletionResponse:
         """Generate a single completion"""
         try:
             # Debug: Log entry into completion function
-            logger.info(f"=== ENTERING _generate_completion ===")
+            logger.info("=== ENTERING _generate_completion ===")
             logger.info(f"Generation params: {generation_params}")
-            
+
             # Generate response
-            logger.info(f"=== CALLING backend.generate ===")
+            logger.info("=== CALLING backend.generate ===")
             try:
                 response_text = self.backend.generate(prompt, **generation_params)
-                logger.info(f"=== backend.generate COMPLETED ===")
+                logger.info("=== backend.generate COMPLETED ===")
             except Exception as e:
                 logger.error(f"Backend generation failed: {e}")
-                logger.error(f"CUDA/Model error - backend may need restart")
+                logger.error("CUDA/Model error - backend may need restart")
                 raise
-            
+
             # Debug: Log raw model response
-            logger.info(f"=== RAW MODEL RESPONSE ===")
-            logger.info(f"RESPONSE: {repr(response_text)}")
-            
+            logger.info("=== RAW MODEL RESPONSE ===")
+            logger.info(f"RESPONSE: {response_text!r}")
+
             # Parse tool calls
             tool_calls = self.tool_parser.extract_tool_calls(response_text)
             clean_text = self.tool_parser.clean_text(response_text)
-            
+
             # Debug: Log parsing results
-            logger.info(f"=== PARSING RESULTS ===")
+            logger.info("=== PARSING RESULTS ===")
             logger.info(f"TOOL CALLS FOUND: {len(tool_calls)}")
             if tool_calls:
                 for i, tc in enumerate(tool_calls):
                     logger.info(f"TOOL {i}: {json.dumps(tc, indent=2)}")
-            logger.info(f"CLEAN TEXT: {repr(clean_text)}")
-            
+            logger.info(f"CLEAN TEXT: {clean_text!r}")
+
             # Prepare choice
             choice = {
                 "index": 0,
@@ -542,10 +540,10 @@ class Qwen3APIServer:
                 },
                 "finish_reason": "tool_calls" if tool_calls else "stop"
             }
-            
+
             if tool_calls:
                 choice["message"]["tool_calls"] = tool_calls
-            
+
             # Create response
             response = ChatCompletionResponse(
                 id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
@@ -558,45 +556,45 @@ class Qwen3APIServer:
                     "total_tokens": len(prompt.split()) + len(clean_text.split())
                 }
             )
-            
+
             # Debug: Log response summary
-            logger.info(f"=== RESPONSE SENT ===")
+            logger.info("=== RESPONSE SENT ===")
             logger.info(f"Tool calls: {len(tool_calls)}, Finish reason: {choice['finish_reason']}")
-            
+
             return response.model_dump()
-            
+
         except Exception as e:
             logger.error(f"Generation error: {e}")
             raise
-    
+
     def _generate_stream(self, prompt: str, generation_params: Dict) -> Generator[str, None, None]:
         """Generate streaming response with optimized tool call detection"""
         try:
             # Add streaming parameter
             generation_params["stream"] = True
-            
+
             # Capture raw model output and response chunks for debugging
             model_raw = ""
             response_chunks: List[str] = []
-            
+
             # Simplified buffer strategy - Jinja template ensures predictable format
             buffer = ""
             tool_emitted = False
-            
+
             # Generate with streaming
             for chunk in self.backend.generate_stream(prompt, **generation_params):
                 # Accumulate into buffer for tool call detection
                 buffer += chunk
                 model_raw += chunk  # Capture raw
-                
+
                 # Only check for tool calls if we have a complete block
                 if "</tool_call>" in buffer and not tool_emitted:
                     tool_calls = self.tool_parser.extract_tool_calls(buffer)
-                    
+
                     if tool_calls:
                         # Extract clean visible text before tool calls
                         visible = self.tool_parser.clean_text(buffer)
-                        
+
                         # Emit any preceding content
                         if visible.strip():
                             content_frame = {
@@ -613,7 +611,7 @@ class Qwen3APIServer:
                             frame_str = f"data: {json.dumps(content_frame)}\n\n"
                             response_chunks.append(frame_str)
                             yield frame_str
-                        
+
                         # Emit tool calls (Jinja template should ensure only one call set per response)
                         tc_frame = {
                             "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
@@ -629,11 +627,11 @@ class Qwen3APIServer:
                         frame_str = f"data: {json.dumps(tc_frame)}\n\n"
                         response_chunks.append(frame_str)
                         yield frame_str
-                        
+
                         tool_emitted = True
                         buffer = ""  # Clear buffer after tool emission
                         continue
-                
+
                 # Stream text chunks normally when no tool calls detected
                 # But don't stream if we're in the middle of building a tool call
                 elif not tool_emitted and "<tool_call>" not in buffer:
@@ -651,7 +649,7 @@ class Qwen3APIServer:
                     frame_str = f"data: {json.dumps(text_frame)}\n\n"
                     response_chunks.append(frame_str)
                     yield frame_str
-            
+
             # Send final chunk only if no tool calls were emitted
             if not tool_emitted:
                 final_chunk = {
@@ -668,17 +666,17 @@ class Qwen3APIServer:
                 frame_str = f"data: {json.dumps(final_chunk)}\n\n"
                 response_chunks.append(frame_str)
                 yield frame_str
-            
+
             done_str = "data: [DONE]\n\n"
             response_chunks.append(done_str)
             yield done_str
-            
+
             # After streaming completes, dump raw model and response
             logger.info("=== RAW MODEL STREAM ===")
             logger.info(model_raw)
             logger.info("=== RESPONSE STREAM TO CLIENT ===")
             logger.info("".join(response_chunks))
-            
+
         except Exception as e:
             logger.error(f"Streaming generation error: {e}")
             error_chunk = {
@@ -688,16 +686,16 @@ class Qwen3APIServer:
                 }
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
-    
+
     def run(self, host: str = None, port: int = None):
         """Run the server"""
         server_config = self.config.get("server", {})
         host = host or server_config.get("host", "127.0.0.1")
         port = port or server_config.get("port", 8080)
-        
+
         logger.info(f"Starting Qwen3 API server on {host}:{port}")
         logger.info(f"Active model: {self.config.get('active_model', 'None')}")
-        
+
         uvicorn.run(
             self.app,
             host=host,
@@ -709,43 +707,43 @@ class Qwen3APIServer:
 def main():
     """Main entry point"""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Qwen3 Multi-GPU API Server")
     parser.add_argument("--config", default="models_config.json", help="Configuration file path")
     parser.add_argument("--host", help="Server host")
     parser.add_argument("--port", type=int, help="Server port")
     parser.add_argument("--model", help="Model ID to load")
     parser.add_argument("--context-window", type=int, help="Override context window size (for debugging)")
-    
+
     args = parser.parse_args()
-    
+
     try:
         # Create server
         server = Qwen3APIServer(args.config)
-        
+
         # Override context window if specified
         if args.context_window:
             logger.info(f"Overriding context window to {args.context_window} tokens")
             server.backend.llama_settings["n_ctx"] = args.context_window
-        
+
         # Load specific model if requested
         if args.model:
             success = server.model_manager.load_model_by_id(args.model)
             if not success:
                 logger.error(f"Failed to load model: {args.model}")
                 return 1
-        
+
         # Run server
         server.run(args.host, args.port)
-        
+
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
     except Exception as e:
         logger.error(f"Server error: {e}")
         return 1
-    
+
     return 0
 
 
 if __name__ == "__main__":
-    exit(main()) 
+    exit(main())
