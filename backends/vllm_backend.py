@@ -310,7 +310,7 @@ class VLLMBackend(BaseBackend):
     def generate_stream(self, prompt: str, **kwargs) -> Generator[str, None, None]:
         """
         Generate text with streaming using vLLM
-        
+
         Note: vLLM doesn't support true streaming in the same way as llama.cpp,
         but we can simulate it by generating in chunks
 

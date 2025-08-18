@@ -8,7 +8,7 @@ import os
 import time
 import uuid
 from collections.abc import Generator
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -30,18 +30,18 @@ class ChatMessage(BaseModel):
     class Config:
         extra = "allow"
     role: str = Field(..., description="Role of the message sender")
-    content: Union[str, List[Dict[str, Any]]] = Field(..., description="Content of the message (string or array of parts)")
+    content: Union[str, list[dict[str, Any]]] = Field(..., description="Content of the message (string or array of parts)")
     name: Optional[str] = Field(None, description="Name of the message sender")
 
 class FunctionParameter(BaseModel):
     type: str = Field(..., description="Parameter type")
     description: Optional[str] = Field(None, description="Parameter description")
-    enum: Optional[List[str]] = Field(None, description="Enum values")
+    enum: Optional[list[str]] = Field(None, description="Enum values")
 
 class FunctionDefinition(BaseModel):
     name: str = Field(..., description="Function name")
     description: str = Field(..., description="Function description")
-    parameters: Dict[str, Any] = Field(..., description="Function parameters")
+    parameters: dict[str, Any] = Field(..., description="Function parameters")
 
 class Tool(BaseModel):
     type: str = Field("function", description="Tool type")
@@ -51,15 +51,15 @@ class ChatCompletionRequest(BaseModel):
     class Config:
         extra = "allow"
     model: str = Field(..., description="Model to use")
-    messages: List[ChatMessage] = Field(..., description="Chat messages")
-    tools: Optional[List[Tool]] = Field(None, description="Available tools")
+    messages: list[ChatMessage] = Field(..., description="Chat messages")
+    tools: Optional[list[Tool]] = Field(None, description="Available tools")
 
-    tool_choice: Optional[Union[str, Dict[str, Any]]] = Field(None, description='Tool choice ("auto", "none", or specific function)')
+    tool_choice: Optional[Union[str, dict[str, Any]]] = Field(None, description='Tool choice ("auto", "none", or specific function)')
     temperature: Optional[float] = Field(0.7, description="Sampling temperature")
     max_tokens: Optional[int] = Field(4096, description="Maximum tokens to generate")
     top_p: Optional[float] = Field(0.9, description="Top-p sampling")
     stream: Optional[bool] = Field(False, description="Stream response")
-    stop: Optional[List[str]] = Field(None, description="Stop sequences")
+    stop: Optional[list[str]] = Field(None, description="Stop sequences")
 
 class ModelSwitchRequest(BaseModel):
     model_id: str = Field(..., description="Model ID to switch to")
@@ -69,8 +69,8 @@ class ChatCompletionResponse(BaseModel):
     object: str = Field("chat.completion", description="Object type")
     created: int = Field(..., description="Creation timestamp")
     model: str = Field(..., description="Model used")
-    choices: List[Dict[str, Any]] = Field(..., description="Response choices")
-    usage: Dict[str, int] = Field(..., description="Token usage")
+    choices: list[dict[str, Any]] = Field(..., description="Response choices")
+    usage: dict[str, int] = Field(..., description="Token usage")
 
 class ModelInfo(BaseModel):
     id: str = Field(..., description="Model ID")
@@ -96,7 +96,7 @@ class TemplateManager:
             logger.error(f"Failed to load Jinja template: {e}")
             self.tool_template = None
 
-    def render_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None, add_generation_prompt: bool = True) -> str:
+    def render_prompt(self, messages: list[dict], tools: Optional[list[dict]] = None, add_generation_prompt: bool = True) -> str:
         """Render prompt using Jinja template"""
         if not self.tool_template:
             raise RuntimeError("Jinja template not loaded")
@@ -186,7 +186,7 @@ class Qwen3APIServer:
             except Exception as e:
                 print(f"⚠️  Could not clear {log_file}: {e}")
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load configuration file"""
         try:
             with open(self.config_path) as f:
@@ -433,7 +433,7 @@ class Qwen3APIServer:
             self.download_status[model_id] = {"status": "failed", "progress": 0, "error": str(e)}
             logger.error(f"Download error for {model_id}: {e}")
 
-    def _create_prompt(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
+    def _create_prompt(self, messages: list[dict], tools: Optional[list[dict]] = None) -> str:
         """Create prompt from messages and tools using Jinja template or legacy method"""
         use_jinja = self.config.get("server", {}).get("use_jinja_template", True)
 
@@ -446,7 +446,7 @@ class Qwen3APIServer:
         else:
             return self._create_prompt_legacy(messages, tools)
 
-    def _create_prompt_legacy(self, messages: List[Dict], tools: Optional[List[Dict]] = None) -> str:
+    def _create_prompt_legacy(self, messages: list[dict], tools: Optional[list[dict]] = None) -> str:
         """Legacy prompt creation method (fallback)"""
         prompt_parts = []
 
@@ -498,7 +498,7 @@ class Qwen3APIServer:
 
         return "".join(prompt_parts)
 
-    async def _generate_completion(self, prompt: str, generation_params: Dict, tools: Optional[List[Dict]] = None) -> ChatCompletionResponse:
+    async def _generate_completion(self, prompt: str, generation_params: dict, tools: Optional[list[dict]] = None) -> ChatCompletionResponse:
         """Generate a single completion"""
         try:
             # Debug: Log entry into completion function
@@ -567,7 +567,7 @@ class Qwen3APIServer:
             logger.error(f"Generation error: {e}")
             raise
 
-    def _generate_stream(self, prompt: str, generation_params: Dict) -> Generator[str, None, None]:
+    def _generate_stream(self, prompt: str, generation_params: dict) -> Generator[str, None, None]:
         """Generate streaming response with optimized tool call detection"""
         try:
             # Add streaming parameter
@@ -575,7 +575,7 @@ class Qwen3APIServer:
 
             # Capture raw model output and response chunks for debugging
             model_raw = ""
-            response_chunks: List[str] = []
+            response_chunks: list[str] = []
 
             # Simplified buffer strategy - Jinja template ensures predictable format
             buffer = ""
@@ -687,7 +687,7 @@ class Qwen3APIServer:
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
 
-    def run(self, host: str = None, port: int = None):
+    def run(self, host: Optional[str] = None, port: Optional[int] = None):
         """Run the server"""
         server_config = self.config.get("server", {})
         host = host or server_config.get("host", "127.0.0.1")
