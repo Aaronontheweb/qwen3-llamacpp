@@ -1,498 +1,332 @@
-#!/usr/bin/env python3
 """
-Model management CLI for Qwen3 multi-GPU server
+Unified model manager for different backend types
 """
 
-import argparse
 import json
 import logging
 import os
-import sys
-from pathlib import Path
 from typing import Dict, List, Optional, Any
+from pathlib import Path
 
-import click
-from rich.console import Console
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-from rich.panel import Panel
-from rich.text import Text
-from tqdm import tqdm
-
-from utils.logging_config import setup_logging
+from backends.factory import BackendFactory, get_available_backends
 from utils.gpu_monitor import get_gpu_monitor
-from utils.model_utils import (
-    validate_model_config, get_model_file_size, estimate_download_time,
-    format_file_size, get_model_path, is_model_downloaded,
-    get_downloaded_models, cleanup_incomplete_downloads
-)
 
-console = Console()
+logger = logging.getLogger(__name__)
 
 
-class ModelManagerCLI:
-    """Command-line interface for model management"""
+class ModelManager:
+    """Manager for model loading and switching with multiple backend support"""
     
     def __init__(self, config_path: str = "models_config.json"):
+        """
+        Initialize model manager
+        
+        Args:
+            config_path: Path to models configuration file
+        """
         self.config_path = config_path
         self.config = self._load_config()
+        self.backend = None
+        self.current_model_id = None
+        self.current_backend_type = None
         self.gpu_monitor = get_gpu_monitor()
         
-        # Set up logging
-        log_level = self.config.get("server", {}).get("log_level", "INFO")
-        self.logger = setup_logging(log_level)
+        # Initialize backend
+        self._initialize_backend()
     
     def _load_config(self) -> Dict[str, Any]:
-        """Load configuration file"""
+        """Load configuration from file"""
+        if not os.path.exists(self.config_path):
+            logger.warning(f"Config file not found: {self.config_path}. Using defaults.")
+            return self._get_default_config()
+        
         try:
             with open(self.config_path, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            console.print(f"[red]Configuration file not found: {self.config_path}[/red]")
-            sys.exit(1)
-        except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid JSON in configuration file: {e}[/red]")
-            sys.exit(1)
-    
-    def _save_config(self):
-        """Save configuration file"""
-        try:
-            with open(self.config_path, 'w') as f:
-                json.dump(self.config, f, indent=2)
+                config = json.load(f)
+                logger.info(f"Loaded configuration from {self.config_path}")
+                return config
         except Exception as e:
-            console.print(f"[red]Error saving configuration: {e}[/red]")
+            logger.error(f"Failed to load config: {e}. Using defaults.")
+            return self._get_default_config()
     
-    def list_models(self, show_details: bool = False):
-        """List available models"""
-        models = self.config["models"]
-        
-        table = Table(title="Available Models")
-        table.add_column("ID", style="cyan", no_wrap=True)
-        table.add_column("Name", style="green")
-        table.add_column("Size", style="yellow")
-        table.add_column("Type", style="blue")
-        table.add_column("Quantization", style="white")
-        table.add_column("Status", style="magenta")
-        table.add_column("Memory (GB)", style="red")
-        
-        if show_details:
-            table.add_column("Description", style="white")
-        
-        for model_id, model_config in models.items():
-            # Check if model is downloaded
-            model_name = model_config["name"]
-            download_path = self.config["download_path"]
-            
-            # Check for specific quantization if specified
-            quantization = model_config.get("quantization", None)
-            if quantization:
-                # Check if the specific quantization file exists
-                model_dir = os.path.join(download_path, model_name.replace("/", "_"))
-                downloaded = False
-                if os.path.exists(model_dir):
-                    for file in os.listdir(model_dir):
-                        if file.endswith('.gguf') and quantization in file:
-                            downloaded = True
-                            break
-            else:
-                downloaded = is_model_downloaded(model_name, download_path)
-            
-            # Check if it's the active model
-            active = model_id == self.config.get("active_model")
-            
-            status = []
-            if downloaded:
-                if quantization:
-                    status.append(f"✓ {quantization}")
-                else:
-                    status.append("✓ Downloaded")
-            if active:
-                status.append("✓ Active")
-            
-            status_text = " | ".join(status) if status else "Not downloaded"
-            
-            row = [
-                model_id,
-                model_name,
-                model_config["size"],
-                model_config["type"],
-                model_config.get("quantization", "Auto"),
-                status_text,
-                str(model_config.get("memory_estimate_gb", "N/A"))
-            ]
-            
-            if show_details:
-                row.append(model_config["description"])
-            
-            table.add_row(*row)
-        
-        console.print(table)
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Get default configuration"""
+        return {
+            "backend": {
+                "type": "vllm",
+                "fallback": "llama_cpp",
+                "vllm_config": {
+                    "tensor_parallel_size": "auto",
+                    "gpu_memory_utilization": 0.90
+                }
+            },
+            "models": {},
+            "download_path": "./models",
+            "cache_dir": "./cache"
+        }
     
-    def download_model(self, model_id: str, force: bool = False):
-        """Download a model"""
-        if model_id not in self.config["models"]:
-            console.print(f"[red]Unknown model ID: {model_id}[/red]")
+    def _initialize_backend(self):
+        """Initialize the backend based on configuration"""
+        backend_config = self.config.get("backend", {})
+        backend_type = backend_config.get("type", "vllm")
+        fallback_type = backend_config.get("fallback", "llama_cpp")
+        
+        # Get available backends
+        available = get_available_backends()
+        logger.info(f"Available backends: {available}")
+        
+        # Try primary backend
+        if backend_type in available:
+            self._create_backend(backend_type)
+        # Try fallback backend
+        elif fallback_type in available:
+            logger.warning(f"Primary backend '{backend_type}' not available. Using fallback: {fallback_type}")
+            self._create_backend(fallback_type)
+        # Use any available backend
+        elif available:
+            first_available = available[0]
+            logger.warning(f"Using first available backend: {first_available}")
+            self._create_backend(first_available)
+        else:
+            raise RuntimeError("No backends available. Please install vLLM or llama-cpp-python.")
+    
+    def _create_backend(self, backend_type: str):
+        """Create backend instance"""
+        backend_config = self.config.get("backend", {})
+        
+        # Get backend-specific config
+        if backend_type == "vllm":
+            specific_config = backend_config.get("vllm_config", {})
+        elif backend_type in ["llama_cpp", "llama.cpp"]:
+            specific_config = backend_config.get("llama_cpp_config", {})
+        else:
+            specific_config = {}
+        
+        # Handle auto tensor_parallel_size for vLLM
+        if backend_type == "vllm" and specific_config.get("tensor_parallel_size") == "auto":
+            gpu_count = self.gpu_monitor.device_count if hasattr(self.gpu_monitor, 'device_count') else 1
+            specific_config["tensor_parallel_size"] = max(1, gpu_count)
+            logger.info(f"Auto-detected tensor_parallel_size: {specific_config['tensor_parallel_size']}")
+        
+        # Merge with global settings
+        config = {
+            "download_path": self.config.get("download_path", "./models"),
+            "cache_dir": self.config.get("cache_dir", "./cache"),
+            **specific_config
+        }
+        
+        try:
+            self.backend = BackendFactory.create_backend(backend_type, config)
+            self.current_backend_type = backend_type
+            logger.info(f"Successfully created {backend_type} backend")
+        except Exception as e:
+            logger.error(f"Failed to create {backend_type} backend: {e}")
+            raise
+    
+    def switch_backend(self, backend_type: str) -> bool:
+        """
+        Switch to a different backend type
+        
+        Args:
+            backend_type: Backend type to switch to
+            
+        Returns:
+            True if successful
+        """
+        if backend_type == self.current_backend_type:
+            logger.info(f"Already using {backend_type} backend")
+            return True
+        
+        # Unload current model if any
+        if self.backend and self.current_model_id:
+            self.backend.unload_model()
+            self.current_model_id = None
+        
+        # Clean up old backend
+        if self.backend:
+            self.backend.cleanup()
+            self.backend = None
+        
+        # Create new backend
+        try:
+            self._create_backend(backend_type)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to switch to {backend_type}: {e}")
+            return False
+    
+    def load_model_by_id(self, model_id: str, backend_type: Optional[str] = None) -> bool:
+        """
+        Load a model by its ID
+        
+        Args:
+            model_id: Model ID from configuration
+            backend_type: Optional backend type to use
+            
+        Returns:
+            True if successful
+        """
+        if model_id not in self.config.get("models", {}):
+            logger.error(f"Unknown model ID: {model_id}")
             return False
         
         model_config = self.config["models"][model_id]
-        model_name = model_config["name"]
-        download_path = self.config["download_path"]
-        quantization = model_config.get("quantization", None)
         
-        # Check if specific quantization is already downloaded
-        if quantization and not force:
-            model_dir = os.path.join(download_path, model_name.replace("/", "_"))
-            if os.path.exists(model_dir):
-                for file in os.listdir(model_dir):
-                    if file.endswith('.gguf') and quantization in file:
-                        console.print(f"[yellow]Model {model_id} with {quantization} is already downloaded[/yellow]")
-                        return True
-                console.print(f"[blue]Model {model_id} exists but {quantization} quantization not found. Downloading...[/blue]")
-        elif is_model_downloaded(model_name, download_path) and not force:
-            console.print(f"[yellow]Model {model_id} is already downloaded[/yellow]")
-            return True
-        
-        # Create download directory
-        model_dir = get_model_path(model_name, download_path)
-        os.makedirs(model_dir, exist_ok=True)
-        
-        # Get file size
-        file_size = get_model_file_size(model_name)
-        if file_size:
-            console.print(f"File size: {format_file_size(file_size)}")
-            estimated_time = estimate_download_time(file_size)
-            if estimated_time > 0:
-                console.print(f"Estimated download time: {estimated_time:.1f} minutes")
-        
-        # Check memory requirements if specified
-        if "memory_estimate_gb" in model_config:
-            memory_check = self.gpu_monitor.check_model_fits(model_config["memory_estimate_gb"])
-            if not memory_check[0]:  # memory_check returns (fits, details)
-                console.print(f"[red]Warning: Model requires {model_config['memory_estimate_gb']}GB but only "
-                             f"{memory_check[1]['available_memory_mb']/1024:.1f}GB available[/red]")
-                if not click.confirm("Continue with download anyway?"):
-                    return False
-        
-        # Download model
-        try:
-            from huggingface_hub import hf_hub_download
-            
-            console.print(f"[green]Downloading {model_name}...[/green]")
-            
-            # Download the model file - use Q4_K_M for good balance of size and quality
-            from huggingface_hub import hf_hub_download
-            
-            # Find available GGUF files and select the best quality that fits in GPU memory
-            from huggingface_hub import list_repo_files, hf_hub_url
-            import requests
-            
-            files = list_repo_files(model_name)
-            gguf_files = [f for f in files if f.endswith('.gguf')]
-            
-            if not gguf_files:
-                raise Exception(f"No GGUF files found in {model_name}")
-            
-            # Get available GPU memory
-            total_memory, available_memory = self.gpu_monitor.get_total_gpu_memory()
-            available_memory_gb = available_memory / 1024
-            
-            console.print(f"[blue]Available GPU memory: {available_memory_gb:.1f}GB[/blue]")
-            
-            # Get file sizes for all GGUF files
-            file_sizes = {}
-            for gguf_file in gguf_files:
-                try:
-                    # Get the download URL to check file size
-                    url = hf_hub_url(repo_id=model_name, filename=gguf_file)
-                    response = requests.head(url, allow_redirects=True)
-                    if response.status_code == 200:
-                        file_size_gb = int(response.headers.get('content-length', 0)) / (1024**3)
-                        file_sizes[gguf_file] = file_size_gb
-                        console.print(f"[dim]  {gguf_file}: {file_size_gb:.1f}GB[/dim]")
-                except Exception as e:
-                    console.print(f"[yellow]Warning: Could not get size for {gguf_file}: {e}[/yellow]")
-                    # Estimate size based on filename
-                    if 'Q2_K' in gguf_file:
-                        file_sizes[gguf_file] = 8.0  # Rough estimate
-                    elif 'Q3_K' in gguf_file:
-                        file_sizes[gguf_file] = 10.0
-                    elif 'Q4_K' in gguf_file:
-                        file_sizes[gguf_file] = 15.0
-                    elif 'Q5_K' in gguf_file:
-                        file_sizes[gguf_file] = 20.0
-                    elif 'Q6_K' in gguf_file:
-                        file_sizes[gguf_file] = 25.0
-                    elif 'Q8_0' in gguf_file or 'BF16' in gguf_file:
-                        file_sizes[gguf_file] = 35.0
-                    else:
-                        file_sizes[gguf_file] = 15.0  # Default estimate
-            
-            # Check if model config specifies a quantization
-            preferred_quant = model_config.get("quantization", None)
-            
-            selected_file = None
-            selected_quality = None
-            
-            if preferred_quant:
-                # Look for the specific quantization requested
-                matching_files = [f for f in gguf_files if preferred_quant in f]
-                if matching_files:
-                    selected_file = matching_files[0]  # Take the first match
-                    selected_quality = preferred_quant
-                    console.print(f"[green]Using requested quantization: {preferred_quant}[/green]")
-                else:
-                    console.print(f"[yellow]Warning: Requested quantization {preferred_quant} not found[/yellow]")
-            
-            if not selected_file:
-                # Fall back to automatic selection
-                # Quality order: Q4_K > Q3_K > Q5_K > Q6_K > Q8_0 > BF16 
-                quality_order = ['Q4_K', 'Q3_K_S', 'Q3_K_M', 'Q5_K', 'Q6_K', 'Q8_0', 'BF16']
-                
-                for quality in quality_order:
-                    matching_files = [f for f in gguf_files if quality in f]
-                    for file in matching_files:
-                        if file in file_sizes:
-                            file_size_gb = file_sizes[file]
-                            # Check if file fits in available memory (with 2GB buffer for safety)
-                            if file_size_gb <= (available_memory_gb - 2.0):
-                                selected_file = file
-                                selected_quality = quality
-                                break
-                    if selected_file:
-                        break
-            
-            # If no file fits, select the smallest available
-            if not selected_file:
-                smallest_file = min(file_sizes.items(), key=lambda x: x[1])
-                selected_file = smallest_file[0]
-                selected_quality = "smallest"
-                console.print(f"[yellow]Warning: No file fits in memory. Selecting smallest: {selected_file}[/yellow]")
-            
-            filename = selected_file
-            file_size = file_sizes.get(filename, "unknown")
-            console.print(f"[green]Selected: {filename} ({file_size:.1f}GB, {selected_quality} quality)[/green]")
-            
-            # Download ONLY the specific GGUF file (not all files!)
-            console.print(f"[cyan]Downloading file: {filename}[/cyan]")
-            model_file = hf_hub_download(
-                repo_id=model_name,
-                filename=filename,
-                local_dir=model_dir,
-                local_dir_use_symlinks=False,
-                resume_download=True
-            )
-            
-            console.print(f"[green]✓ Model {model_id} downloaded successfully[/green]")
-            return True
-            
-        except Exception as e:
-            console.print(f"[red]Error downloading model: {e}[/red]")
-            return False
-    
-    def switch_model(self, model_id: str):
-        """Switch to a different model"""
-        if model_id not in self.config["models"]:
-            console.print(f"[red]Unknown model ID: {model_id}[/red]")
-            return False
-        
-        model_config = self.config["models"][model_id]
-        model_name = model_config["name"]
-        download_path = self.config["download_path"]
-        
-        # Check if model is downloaded
-        if not is_model_downloaded(model_name, download_path):
-            console.print(f"[red]Model {model_id} is not downloaded[/red]")
-            if click.confirm("Download it now?"):
-                if not self.download_model(model_id):
-                    return False
-            else:
+        # Switch backend if requested
+        if backend_type and backend_type != self.current_backend_type:
+            if not self.switch_backend(backend_type):
                 return False
         
-        # Update active model
-        self.config["active_model"] = model_id
-        self._save_config()
+        # Determine model path based on backend type
+        model_path = self._get_model_path(model_config)
         
-        console.print(f"[green]✓ Switched to model: {model_id}[/green]")
-        return True
+        if not model_path:
+            logger.error(f"Could not determine model path for {model_id}")
+            return False
+        
+        # Load model
+        logger.info(f"Loading model {model_id} with {self.current_backend_type} backend")
+        success = self.backend.load_model(model_path, model_config)
+        
+        if success:
+            self.current_model_id = model_id
+            logger.info(f"Successfully loaded model: {model_id}")
+        else:
+            logger.error(f"Failed to load model: {model_id}")
+        
+        return success
     
-    def info_model(self, model_id: str):
-        """Show detailed information about a model"""
-        if model_id not in self.config["models"]:
-            console.print(f"[red]Unknown model ID: {model_id}[/red]")
-            return
+    def _get_model_path(self, model_config: Dict[str, Any]) -> Optional[str]:
+        """
+        Get the appropriate model path based on backend type
         
-        model_config = self.config["models"][model_id]
-        model_name = model_config["name"]
-        download_path = self.config["download_path"]
-        
-        # Create info panel
-        info_text = Text()
-        info_text.append(f"ID: {model_id}\n", style="cyan")
-        info_text.append(f"Name: {model_name}\n", style="green")
-        info_text.append(f"Size: {model_config['size']}\n", style="yellow")
-        info_text.append(f"Type: {model_config['type']}\n", style="blue")
-        info_text.append(f"Quantization: {model_config['quantization']}\n", style="magenta")
-        info_text.append(f"Memory Estimate: {model_config['memory_estimate_gb']}GB\n", style="red")
-        info_text.append(f"Recommended GPUs: {model_config['recommended_gpus']}\n", style="white")
-        info_text.append(f"Description: {model_config['description']}\n", style="white")
-        
-        # Check download status
-        downloaded = is_model_downloaded(model_name, download_path)
-        if downloaded:
-            info_text.append("Status: ✓ Downloaded\n", style="green")
+        Args:
+            model_config: Model configuration
             
-            # Get file info
-            model_path = get_model_path(model_name, download_path)
-            gguf_file = os.path.join(model_path, "model.gguf")
-            if os.path.exists(gguf_file):
-                file_size = os.path.getsize(gguf_file)
-                info_text.append(f"File Size: {format_file_size(file_size)}\n", style="white")
-        else:
-            info_text.append("Status: Not downloaded\n", style="red")
+        Returns:
+            Model path or None
+        """
+        # For vLLM, use HuggingFace model name/path
+        if self.current_backend_type == "vllm":
+            # Check if we have a local HF model
+            model_name = model_config.get("name")
+            if model_name:
+                # Check local directory first
+                download_path = self.config.get("download_path", "./models")
+                local_path = os.path.join(download_path, model_name.replace("/", "_"))
+                
+                if os.path.exists(local_path):
+                    logger.info(f"Using local HF model: {local_path}")
+                    return local_path
+                else:
+                    # Use HuggingFace model ID for auto-download
+                    logger.info(f"Using HuggingFace model: {model_name}")
+                    return model_name
         
-        # Check if active
-        active = model_id == self.config.get("active_model")
-        if active:
-            info_text.append("Active: ✓ Yes\n", style="green")
-        else:
-            info_text.append("Active: No\n", style="white")
+        # For llama.cpp, use GGUF file
+        elif self.current_backend_type in ["llama_cpp", "llama.cpp"]:
+            gguf_name = model_config.get("gguf_name", model_config.get("name"))
+            if gguf_name:
+                download_path = self.config.get("download_path", "./models")
+                model_dir = os.path.join(download_path, gguf_name.replace("/", "_"))
+                
+                # Look for GGUF file
+                if os.path.exists(model_dir):
+                    for root, dirs, files in os.walk(model_dir):
+                        for file in files:
+                            if file.endswith('.gguf'):
+                                gguf_path = os.path.join(root, file)
+                                logger.info(f"Found GGUF file: {gguf_path}")
+                                return gguf_path
         
-        panel = Panel(info_text, title=f"Model Information: {model_id}", border_style="blue")
-        console.print(panel)
+        # Fallback to name field
+        return model_config.get("name")
     
-    def check_model(self, model_id: str):
-        """Check if a model can fit in available memory"""
-        if model_id not in self.config["models"]:
-            console.print(f"[red]Unknown model ID: {model_id}[/red]")
-            return
+    def get_current_model(self) -> Optional[str]:
+        """Get current model ID"""
+        return self.current_model_id
+    
+    def get_current_backend(self) -> Optional[str]:
+        """Get current backend type"""
+        return self.current_backend_type
+    
+    def get_available_models(self) -> List[Dict[str, Any]]:
+        """Get list of available models"""
+        models = []
         
-        model_config = self.config["models"][model_id]
-        required_memory_gb = model_config["memory_estimate_gb"]
+        for model_id, model_config in self.config.get("models", {}).items():
+            model_info = {
+                "id": model_id,
+                "name": model_config.get("name"),
+                "type": model_config.get("type"),
+                "size": model_config.get("size"),
+                "description": model_config.get("description"),
+                "max_context_tokens": model_config.get("max_context_tokens"),
+                "is_current": model_id == self.current_model_id,
+                "backend_compatible": self._is_model_compatible(model_config)
+            }
+            models.append(model_info)
         
-        # Check memory
-        memory_check = self.gpu_monitor.check_model_fits(required_memory_gb)
+        return models
+    
+    def _is_model_compatible(self, model_config: Dict[str, Any]) -> Dict[str, bool]:
+        """Check which backends are compatible with a model"""
+        compatible = {}
         
-        # Create status panel
-        status_text = Text()
-        status_text.append(f"Model: {model_id}\n", style="cyan")
-        status_text.append(f"Required Memory: {required_memory_gb}GB\n", style="red")
-        status_text.append(f"Available Memory: {memory_check['available_memory_mb']/1024:.1f}GB\n", style="green")
-        status_text.append(f"Total Memory: {memory_check['total_memory_mb']/1024:.1f}GB\n", style="yellow")
+        # vLLM needs HuggingFace models
+        compatible["vllm"] = bool(model_config.get("name"))
         
-        if memory_check["fits"]:
-            status_text.append("Status: ✓ Fits in memory\n", style="green")
-        else:
-            status_text.append("Status: ✗ Does not fit\n", style="red")
+        # llama.cpp needs GGUF files
+        compatible["llama_cpp"] = bool(model_config.get("gguf_name") or 
+                                      (model_config.get("name") and "GGUF" in model_config.get("name", "")))
         
-        # GPU details
-        status_text.append(f"\nGPU Details:\n", style="white")
-        for gpu in memory_check["gpu_details"]:
-            status_text.append(f"  GPU {gpu['index']} ({gpu['name']}): "
-                             f"{gpu['free_memory_mb']/1024:.1f}GB free / "
-                             f"{gpu['total_memory_mb']/1024:.1f}GB total\n", style="white")
+        return compatible
+    
+    def generate(self, prompt: str, **kwargs) -> str:
+        """Generate text using current model"""
+        if not self.backend or not self.current_model_id:
+            raise RuntimeError("No model loaded")
         
-        panel = Panel(status_text, title="Memory Check", border_style="blue")
-        console.print(panel)
+        return self.backend.generate(prompt, **kwargs)
+    
+    def generate_stream(self, prompt: str, **kwargs):
+        """Generate text with streaming"""
+        if not self.backend or not self.current_model_id:
+            raise RuntimeError("No model loaded")
+        
+        return self.backend.generate_stream(prompt, **kwargs)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get manager status"""
+        status = {
+            "current_model": self.current_model_id,
+            "current_backend": self.current_backend_type,
+            "available_backends": get_available_backends(),
+            "available_models": self.get_available_models(),
+            "config": self.config
+        }
+        
+        if self.backend:
+            status["backend_status"] = self.backend.get_status()
+        
+        return status
     
     def cleanup(self):
-        """Clean up incomplete downloads"""
-        download_path = self.config["download_path"]
-        
-        console.print("[yellow]Cleaning up incomplete downloads...[/yellow]")
-        cleaned_count = cleanup_incomplete_downloads(download_path)
-        
-        if cleaned_count > 0:
-            console.print(f"[green]✓ Cleaned up {cleaned_count} incomplete downloads[/green]")
-        else:
-            console.print("[green]✓ No incomplete downloads found[/green]")
+        """Clean up resources"""
+        if self.backend:
+            self.backend.cleanup()
+            self.backend = None
+        self.current_model_id = None
+        self.current_backend_type = None
 
 
-@click.group()
-@click.option('--config', default='models_config.json', help='Configuration file path')
-@click.pass_context
-def cli(ctx, config):
-    """Qwen3 Model Manager CLI"""
-    ctx.obj = ModelManagerCLI(config)
+# Global model manager instance
+_model_manager: Optional[ModelManager] = None
 
 
-@cli.command()
-@click.option('--details', is_flag=True, help='Show detailed information')
-@click.pass_obj
-def list(manager, details):
-    """List available models"""
-    manager.list_models(show_details=details)
-
-
-@cli.command()
-@click.argument('model_id')
-@click.option('--force', is_flag=True, help='Force re-download')
-@click.pass_obj
-def download(manager, model_id, force):
-    """Download a model"""
-    manager.download_model(model_id, force=force)
-
-
-@cli.command()
-@click.argument('model_id')
-@click.pass_obj
-def switch(manager, model_id):
-    """Switch to a different model"""
-    manager.switch_model(model_id)
-
-
-@cli.command()
-@click.argument('model_id')
-@click.pass_obj
-def info(manager, model_id):
-    """Show detailed information about a model"""
-    manager.info_model(model_id)
-
-
-@cli.command()
-@click.argument('model_id')
-@click.pass_obj
-def check(manager, model_id):
-    """Check if a model can fit in available memory"""
-    manager.check_model(model_id)
-
-
-@cli.command()
-@click.pass_obj
-def cleanup(manager):
-    """Clean up incomplete downloads"""
-    manager.cleanup()
-
-
-@cli.command()
-@click.pass_obj
-def status(manager):
-    """Show system status"""
-    # GPU status
-    gpu_summary = manager.gpu_monitor.get_memory_usage_summary()
-    
-    status_text = Text()
-    status_text.append("GPU Status:\n", style="cyan")
-    status_text.append(f"  Total Memory: {gpu_summary['total_memory_mb']/1024:.1f}GB\n", style="white")
-    status_text.append(f"  Used Memory: {gpu_summary['used_memory_mb']/1024:.1f}GB\n", style="white")
-    status_text.append(f"  Available Memory: {gpu_summary['available_memory_mb']/1024:.1f}GB\n", style="white")
-    status_text.append(f"  Utilization: {gpu_summary['utilization_percent']:.1f}%\n", style="white")
-    status_text.append(f"  GPU Count: {gpu_summary['gpu_count']}\n", style="white")
-    
-    # Active model
-    active_model = manager.config.get("active_model")
-    status_text.append(f"\nActive Model: {active_model or 'None'}\n", style="cyan")
-    
-    # Downloaded models
-    download_path = manager.config["download_path"]
-    downloaded_models = get_downloaded_models(download_path)
-    status_text.append(f"\nDownloaded Models: {len(downloaded_models)}\n", style="cyan")
-    
-    for model in downloaded_models:
-        status_text.append(f"  {model['name']}: {model['size_formatted']}\n", style="white")
-    
-    panel = Panel(status_text, title="System Status", border_style="blue")
-    console.print(panel)
-
-
-if __name__ == "__main__":
-    cli() 
+def get_model_manager(config_path: str = "models_config.json") -> ModelManager:
+    """Get or create the global model manager instance"""
+    global _model_manager
+    if _model_manager is None:
+        _model_manager = ModelManager(config_path)
+    return _model_manager

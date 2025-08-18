@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  vllm-server:
+    build: .
+    image: vllm-multi-gpu:latest
+    container_name: vllm-server
+    
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # Environment variables
+    environment:
+      - CUDA_VISIBLE_DEVICES=0,1  # Use both GPUs
+      - VLLM_TENSOR_PARALLEL_SIZE=2
+      - VLLM_GPU_MEMORY_UTILIZATION=0.90
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - LOG_LEVEL=INFO
+    
+    # Volumes
+    volumes:
+      - ./models:/app/models
+      - ./cache:/app/cache
+      - ./models_config.json:/app/models_config.json:ro
+      - vllm-cache:/root/.cache
+    
+    # Ports
+    ports:
+      - "8080:8080"
+    
+    # Resource limits
+    mem_limit: 128g
+    memswap_limit: 128g
+    shm_size: 16gb
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "10"
+    
+    # Command override for development
+    # command: python3 openai_server.py --backend vllm --tensor-parallel-size 2
+
+volumes:
+  vllm-cache:
+    driver: local

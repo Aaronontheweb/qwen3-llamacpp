@@ -4,7 +4,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:huggingface.co)",
       "mcp__memorizer__store",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "mcp__memorizer__get_many"
     ],
     "deny": []
   }

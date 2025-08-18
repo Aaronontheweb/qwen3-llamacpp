@@ -1,12 +1,31 @@
 {
+  "backend": {
+    "type": "vllm",
+    "fallback": "llama_cpp",
+    "vllm_config": {
+      "tensor_parallel_size": "auto",
+      "gpu_memory_utilization": 0.90,
+      "max_num_seqs": 256,
+      "kv_cache_dtype": "auto",
+      "enable_prefix_caching": true,
+      "enable_chunked_prefill": true,
+      "trust_remote_code": true
+    },
+    "llama_cpp_config": {
+      "n_gpu_layers": -1,
+      "use_mmap": true,
+      "offload_kqv": true
+    }
+  },
   "models": {
     "qwen3-30b-instruct": {
-      "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF",
+      "name": "Qwen/Qwen2.5-32B-Instruct",
+      "gguf_name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF",
       "type": "instruction",
       "size": "30B",
       "description": "Large instruction-following model for complex tasks",
-      "max_context_tokens": 262144,
-      "n_gpu_layers": 40,
+      "max_context_tokens": 131072,
+      "quantization": "AWQ",
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -14,11 +33,13 @@
       }
     },
     "phi-4-reasoning": {
-      "name": "unsloth/Phi-4-reasoning-GGUF",
+      "name": "microsoft/Phi-4",
+      "gguf_name": "unsloth/Phi-4-reasoning-GGUF",
       "type": "instruction",
       "size": "15B",
       "description": "Medium reasoning model, good balance",
-      "max_context_tokens": 262144,
+      "max_context_tokens": 131072,
+      "quantization": "AWQ",
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -26,11 +47,13 @@
       }
     },
     "qwen3-8b-instruct": {
-      "name": "lm-kit/qwen-3-8b-instruct-gguf",
+      "name": "Qwen/Qwen2.5-7B-Instruct",
+      "gguf_name": "lm-kit/qwen-3-8b-instruct-gguf",
       "type": "instruction",
       "size": "7B",
       "description": "Fast model for general tasks",
       "max_context_tokens": 32768,
+      "quantization": "GPTQ",
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -38,11 +61,13 @@
       }
     },
     "phi-4-mini": {
-      "name": "unsloth/Phi-4-mini-instruct-GGUF",
+      "name": "microsoft/Phi-3.5-mini-instruct",
+      "gguf_name": "unsloth/Phi-4-mini-instruct-GGUF",
       "type": "instruction",
       "size": "4B",
       "description": "Very fast model for simple tasks",
-      "max_context_tokens": 262144,
+      "max_context_tokens": 131072,
+      "quantization": null,
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -50,13 +75,13 @@
       }
     },
     "qwen3-coder-30b": {
-      "name": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+      "name": "Qwen/QwenCoder-32B-Instruct",
+      "gguf_name": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
       "type": "coder",
       "size": "30B",
       "description": "Specialized for code generation and programming",
-      "max_context_tokens": 65536,
-      "n_gpu_layers": -1,
-      "quantization": "Q3_K_S",
+      "max_context_tokens": 131072,
+      "quantization": "AWQ",
       "default_params": {
         "temperature": 0.3,
         "max_tokens": 8192,
