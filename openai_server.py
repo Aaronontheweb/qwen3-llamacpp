@@ -22,6 +22,7 @@ from utils.logging_config import setup_logging
 from utils.gpu_monitor import get_gpu_monitor
 from llama_backend import get_model_manager, get_llama_backend
 from tool_parser import get_tool_parser, get_tool_validator
+from process_manager import get_process_manager
 
 # Set up logging
 logger = setup_logging()
@@ -134,6 +135,10 @@ class Qwen3APIServer:
         # Initialize template manager
         template_dir = self.config.get("server", {}).get("template_dir", "templates")
         self.template_manager = TemplateManager(template_dir)
+        
+        # Initialize process manager
+        self.process_manager = get_process_manager()
+        self.process_manager.register_cleanup(self._cleanup)
         
         # Download tracking
         self.download_status = {}
@@ -704,11 +709,21 @@ class Qwen3APIServer:
             port=port,
             log_level="info"
         )
+    
+    def _cleanup(self):
+        """Clean up server resources"""
+        logger.info("Cleaning up API server...")
+        try:
+            self.model_manager.cleanup()
+            self.gpu_monitor.cleanup()
+        except Exception as e:
+            logger.error(f"Server cleanup failed: {e}")
 
 
 def main():
     """Main entry point"""
     import argparse
+    import sys
     
     parser = argparse.ArgumentParser(description="Qwen3 Multi-GPU API Server")
     parser.add_argument("--config", default="models_config.json", help="Configuration file path")
@@ -718,6 +733,9 @@ def main():
     parser.add_argument("--context-window", type=int, help="Override context window size (for debugging)")
     
     args = parser.parse_args()
+    
+    # Initialize process manager early
+    process_manager = get_process_manager()
     
     try:
         # Create server
@@ -740,9 +758,18 @@ def main():
         
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
+        process_manager.cleanup()
+        return 0
     except Exception as e:
         logger.error(f"Server error: {e}")
+        process_manager.cleanup()
         return 1
+    finally:
+        # Ensure cleanup even on unexpected exit
+        try:
+            process_manager.cleanup()
+        except:
+            pass
     
     return 0
 
