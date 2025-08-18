@@ -135,9 +135,18 @@ class ModelManagerCLI:
         model_config = self.config["models"][model_id]
         model_name = model_config["name"]
         download_path = self.config["download_path"]
+        quantization = model_config.get("quantization", None)
         
-        # Check if already downloaded
-        if is_model_downloaded(model_name, download_path) and not force:
+        # Check if specific quantization is already downloaded
+        if quantization and not force:
+            model_dir = os.path.join(download_path, model_name.replace("/", "_"))
+            if os.path.exists(model_dir):
+                for file in os.listdir(model_dir):
+                    if file.endswith('.gguf') and quantization in file:
+                        console.print(f"[yellow]Model {model_id} with {quantization} is already downloaded[/yellow]")
+                        return True
+                console.print(f"[blue]Model {model_id} exists but {quantization} quantization not found. Downloading...[/blue]")
+        elif is_model_downloaded(model_name, download_path) and not force:
             console.print(f"[yellow]Model {model_id} is already downloaded[/yellow]")
             return True
         
