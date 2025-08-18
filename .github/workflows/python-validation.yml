@@ -55,17 +55,13 @@ jobs:
     
     - name: Lint with ruff
       run: |
-        # Stop the build if there are Python syntax errors or undefined names
-        ruff check . --select=E9,F63,F7,F82
-        # Full linting report (non-blocking)
-        ruff check . --exit-zero
+        # Run full ruff check - will fail on any linting errors
+        ruff check .
     
     - name: Lint with flake8
       run: |
-        # Stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Exit-zero treats all errors as warnings
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        # Run full flake8 check - will fail on any linting errors
+        flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
     
     - name: Type check with mypy (best effort)
       run: |
