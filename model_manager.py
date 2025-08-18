@@ -71,6 +71,7 @@ class ModelManagerCLI:
         table.add_column("Name", style="green")
         table.add_column("Size", style="yellow")
         table.add_column("Type", style="blue")
+        table.add_column("Quantization", style="white")
         table.add_column("Status", style="magenta")
         table.add_column("Memory (GB)", style="red")
         
@@ -115,6 +116,7 @@ class ModelManagerCLI:
                 model_name,
                 model_config["size"],
                 model_config["type"],
+                model_config.get("quantization", "Auto"),
                 status_text,
                 str(model_config.get("memory_estimate_gb", "N/A"))
             ]
@@ -270,7 +272,8 @@ class ModelManagerCLI:
             file_size = file_sizes.get(filename, "unknown")
             console.print(f"[green]Selected: {filename} ({file_size:.1f}GB, {selected_quality} quality)[/green]")
             
-            # Download the specific GGUF file
+            # Download ONLY the specific GGUF file (not all files!)
+            console.print(f"[cyan]Downloading file: {filename}[/cyan]")
             model_file = hf_hub_download(
                 repo_id=model_name,
                 filename=filename,
