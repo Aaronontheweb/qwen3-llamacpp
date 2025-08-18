@@ -42,6 +42,7 @@ test search
 
     return len(tool_calls) > 0
 
+
 def test_empty_function_content():
     """Test what causes 'Empty function content in XML' warning"""
 
@@ -62,6 +63,7 @@ def test_empty_function_content():
         full_xml = f"<tool_call>{xml_fragment}</tool_call>"
         tool_calls = parser.extract_tool_calls(full_xml)
         print(f"{name}: {len(tool_calls)} tool calls found")
+
 
 def test_actual_server_output():
     """Test with what the server might actually be producing"""
@@ -110,6 +112,7 @@ Let me find that information."""
         print(f"  Tool calls: {len(tool_calls)}")
         if tool_calls:
             print(f"  Function: {tool_calls[0]['function']['name']}")
+
 
 if __name__ == "__main__":
     test_mem_function()

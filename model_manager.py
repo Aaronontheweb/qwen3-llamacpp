@@ -168,7 +168,7 @@ class ModelManagerCLI:
             memory_check = self.gpu_monitor.check_model_fits(model_config["memory_estimate_gb"])
             if not memory_check[0]:  # memory_check returns (fits, details)
                 console.print(f"[red]Warning: Model requires {model_config['memory_estimate_gb']}GB but only "
-                             f"{memory_check[1]['available_memory_mb']/1024:.1f}GB available[/red]")
+                              f"{memory_check[1]['available_memory_mb']/1024:.1f}GB available[/red]")
                 if not click.confirm("Continue with download anyway?"):
                     return False
 
@@ -386,8 +386,8 @@ class ModelManagerCLI:
         status_text.append("\nGPU Details:\n", style="white")
         for gpu in memory_check["gpu_details"]:
             status_text.append(f"  GPU {gpu['index']} ({gpu['name']}): "
-                             f"{gpu['free_memory_mb']/1024:.1f}GB free / "
-                             f"{gpu['total_memory_mb']/1024:.1f}GB total\n", style="white")
+                               f"{gpu['free_memory_mb']/1024:.1f}GB free / "
+                               f"{gpu['total_memory_mb']/1024:.1f}GB total\n", style="white")
 
         panel = Panel(status_text, title="Memory Check", border_style="blue")
         console.print(panel)

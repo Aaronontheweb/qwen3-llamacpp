@@ -73,6 +73,7 @@ markdown
     print(f"\n🎯 Summary: {len(tool_calls)} tool calls extracted and validated")
     return len(tool_calls) > 0
 
+
 def test_streaming_format():
     """Test the format expected by streaming responses"""
 
@@ -121,6 +122,7 @@ def test_streaming_format():
     except Exception as e:
         print(f"❌ STREAMING FORMAT ERROR: {e}")
         return False
+
 
 if __name__ == "__main__":
     print("🚀 Tool Call Format Validation")

@@ -41,7 +41,7 @@ class LlamaBackend:
             "verbose": False,    # Disable verbose output
             "use_mmap": True,    # Use memory mapping
             "use_mlock": False,  # Don't lock memory
-            "offload_kqv": True, # Offload KQV to GPU when available
+            "offload_kqv": True,  # Offload KQV to GPU when available
         }
 
         # Update settings from config

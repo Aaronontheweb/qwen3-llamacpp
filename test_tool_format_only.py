@@ -55,6 +55,7 @@ markdown
         print("❌ No tool calls found")
         return False
 
+
 def test_multiple_tool_calls():
     """Test parsing multiple tool calls"""
     print("\n🧪 Test 2: Multiple Tool Calls")
@@ -102,6 +103,7 @@ https://github.com/microsoft/vscode
     else:
         print(f"❌ Expected 2 tool calls, got {len(tool_calls)}")
         return False
+
 
 def test_streaming_format():
     """Test that the format works for streaming"""
@@ -166,6 +168,7 @@ def test_streaming_format():
         print(f"❌ Error validating streaming format: {e}")
         return False
 
+
 def test_edge_cases():
     """Test edge cases and malformed input"""
     print("\n🧪 Test 4: Edge Cases")
@@ -194,6 +197,7 @@ def test_edge_cases():
         print("✅ All edge cases handled correctly")
 
     return all_passed
+
 
 def main():
     """Run all tests"""

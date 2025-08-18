@@ -15,6 +15,7 @@ def check_python_version():
     print(f"✓ Python {sys.version_info.major}.{sys.version_info.minor} detected")
     return True
 
+
 def check_dependencies():
     """Check if required dependencies are installed"""
     required_packages = [
@@ -44,6 +45,7 @@ def check_dependencies():
 
     return True
 
+
 def check_llama_cpp():
     """Check if llama-cpp-python is installed with CUDA support"""
     try:
@@ -70,6 +72,7 @@ def check_llama_cpp():
         print("   For CUDA support: CMAKE_ARGS='-DLLAMA_CUBLAS=on' pip install llama-cpp-python")
         return False
 
+
 def check_gpu():
     """Check GPU availability"""
     try:
@@ -95,6 +98,7 @@ def check_gpu():
         print(f"⚠️  GPU check failed: {e}")
         return False
 
+
 def check_config():
     """Check if configuration file exists"""
     config_file = "models_config.json"
@@ -113,12 +117,14 @@ def check_config():
         print(f"✗ Configuration file not found: {config_file}")
         return False
 
+
 def create_directories():
     """Create necessary directories"""
     directories = ["models", "cache", "logs"]
     for directory in directories:
         Path(directory).mkdir(exist_ok=True)
         print(f"✓ Directory created: {directory}")
+
 
 def download_sample_model():
     """Download a sample model"""
@@ -138,6 +144,7 @@ def download_sample_model():
         print(f"⚠️  Model download error: {e}")
         return False
 
+
 def start_server():
     """Start the API server"""
     print("\n🚀 Starting Qwen3 API server...")
@@ -153,6 +160,7 @@ def start_server():
         print("\n👋 Server stopped by user")
     except Exception as e:
         print(f"❌ Server error: {e}")
+
 
 def main():
     """Main quick start function"""
@@ -211,6 +219,7 @@ def main():
             print("❌ Invalid choice. Please enter 1-4.")
 
     return True
+
 
 if __name__ == "__main__":
     try:

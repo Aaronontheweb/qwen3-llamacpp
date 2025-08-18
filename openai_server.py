@@ -26,6 +26,8 @@ from utils.logging_config import setup_logging
 logger = setup_logging()
 
 # Pydantic models for API
+
+
 class ChatMessage(BaseModel):
     class Config:
         extra = "allow"
@@ -33,19 +35,23 @@ class ChatMessage(BaseModel):
     content: Union[str, list[dict[str, Any]]] = Field(..., description="Content of the message (string or array of parts)")
     name: Optional[str] = Field(None, description="Name of the message sender")
 
+
 class FunctionParameter(BaseModel):
     type: str = Field(..., description="Parameter type")
     description: Optional[str] = Field(None, description="Parameter description")
     enum: Optional[list[str]] = Field(None, description="Enum values")
+
 
 class FunctionDefinition(BaseModel):
     name: str = Field(..., description="Function name")
     description: str = Field(..., description="Function description")
     parameters: dict[str, Any] = Field(..., description="Function parameters")
 
+
 class Tool(BaseModel):
     type: str = Field("function", description="Tool type")
     function: FunctionDefinition = Field(..., description="Function definition")
+
 
 class ChatCompletionRequest(BaseModel):
     class Config:
@@ -61,8 +67,10 @@ class ChatCompletionRequest(BaseModel):
     stream: Optional[bool] = Field(False, description="Stream response")
     stop: Optional[list[str]] = Field(None, description="Stop sequences")
 
+
 class ModelSwitchRequest(BaseModel):
     model_id: str = Field(..., description="Model ID to switch to")
+
 
 class ChatCompletionResponse(BaseModel):
     id: str = Field(..., description="Response ID")
@@ -71,6 +79,7 @@ class ChatCompletionResponse(BaseModel):
     model: str = Field(..., description="Model used")
     choices: list[dict[str, Any]] = Field(..., description="Response choices")
     usage: dict[str, int] = Field(..., description="Token usage")
+
 
 class ModelInfo(BaseModel):
     id: str = Field(..., description="Model ID")
@@ -114,6 +123,7 @@ class TemplateManager:
     def is_available(self) -> bool:
         """Check if template system is available"""
         return self.tool_template is not None
+
 
 class Qwen3APIServer:
     """OpenAI-compatible API server for Qwen3 models"""

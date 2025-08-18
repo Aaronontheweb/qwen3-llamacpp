@@ -12,6 +12,7 @@ import requests
 # Test configuration
 BASE_URL = "http://localhost:8080"
 
+
 def test_tool_calling_accuracy():
     """Test tool calling accuracy with various scenarios"""
 
@@ -159,6 +160,7 @@ def test_tool_calling_accuracy():
 
     return results
 
+
 def test_streaming_tool_calls():
     """Test streaming tool call responses"""
     print("\n🌊 Testing Streaming Tool Calls")
@@ -232,6 +234,7 @@ def test_streaming_tool_calls():
         print(f"   ❌ STREAMING FAILED - Tool calls: {tool_calls_found}, No XML leak: {not has_xml_leak}")
         return False
 
+
 def test_template_fallback():
     """Test fallback to legacy system"""
     print("\n🔄 Testing Template Fallback")
@@ -243,6 +246,7 @@ def test_template_fallback():
     print("   ✅ Should still work with legacy prompt builder")
 
     return True
+
 
 def test_context_window_usage():
     """Test context window usage with template vs legacy"""
@@ -286,6 +290,7 @@ def test_context_window_usage():
     else:
         print(f"   ❌ Context window test failed: {response.status_code}")
         return False
+
 
 def main():
     """Run all tests"""
@@ -332,6 +337,7 @@ def main():
     total_passed = sum(1 for r in results.values() if r)
     total_tests = len(results)
     print(f"\nOverall: {total_passed}/{total_tests} tests passed")
+
 
 if __name__ == "__main__":
     main()

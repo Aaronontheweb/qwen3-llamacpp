@@ -25,6 +25,7 @@ def test_server_health(base_url: str = "http://localhost:8080") -> bool:
         print(f"✗ Server health check error: {e}")
         return False
 
+
 def test_models_endpoint(base_url: str = "http://localhost:8080") -> bool:
     """Test models endpoint"""
     try:
@@ -41,6 +42,7 @@ def test_models_endpoint(base_url: str = "http://localhost:8080") -> bool:
     except Exception as e:
         print(f"✗ Models endpoint error: {e}")
         return False
+
 
 def test_chat_completion(base_url: str = "http://localhost:8080", model: str = "qwen3-14b-instruct") -> bool:
     """Test chat completion endpoint"""
@@ -67,6 +69,7 @@ def test_chat_completion(base_url: str = "http://localhost:8080", model: str = "
     except Exception as e:
         print(f"✗ Chat completion error: {e}")
         return False
+
 
 def test_tool_calling(base_url: str = "http://localhost:8080", model: str = "qwen3-14b-instruct") -> bool:
     """Test tool calling functionality"""
@@ -123,6 +126,7 @@ def test_tool_calling(base_url: str = "http://localhost:8080", model: str = "qwe
         print(f"✗ Tool calling test error: {e}")
         return False
 
+
 def test_admin_endpoints(base_url: str = "http://localhost:8080") -> bool:
     """Test admin endpoints"""
     try:
@@ -150,6 +154,7 @@ def test_admin_endpoints(base_url: str = "http://localhost:8080") -> bool:
     except Exception as e:
         print(f"✗ Admin endpoints error: {e}")
         return False
+
 
 def main():
     """Run all tests"""
@@ -190,6 +195,7 @@ def main():
         print("⚠️  Some tests failed. Check server logs for details.")
 
     return passed == total
+
 
 if __name__ == "__main__":
     success = main()

@@ -22,6 +22,7 @@ def test_config_loading():
         print(f"✗ Configuration loading failed: {e}")
         return False
 
+
 def test_imports():
     """Test that all modules can be imported"""
     print("\n🔍 Testing module imports...")
@@ -45,6 +46,7 @@ def test_imports():
 
     return all_passed
 
+
 def test_gpu_monitoring():
     """Test GPU monitoring functionality"""
     print("\n🔍 Testing GPU monitoring...")
@@ -65,6 +67,7 @@ def test_gpu_monitoring():
     except Exception as e:
         print(f"✗ GPU monitoring failed: {e}")
         return False
+
 
 def test_tool_parser():
     """Test tool parsing functionality"""
@@ -98,6 +101,7 @@ def test_tool_parser():
         print(f"✗ Tool parser failed: {e}")
         return False
 
+
 def test_model_utils():
     """Test model utilities"""
     print("\n🔍 Testing model utilities...")
@@ -126,6 +130,7 @@ def test_model_utils():
         print(f"✗ Model utilities failed: {e}")
         return False
 
+
 def test_llama_backend():
     """Test llama.cpp backend initialization"""
     print("\n🔍 Testing llama.cpp backend...")
@@ -150,6 +155,7 @@ def test_llama_backend():
         print(f"✗ llama.cpp backend failed: {e}")
         return False
 
+
 def test_api_server():
     """Test API server initialization"""
     print("\n🔍 Testing API server...")
@@ -171,6 +177,7 @@ def test_api_server():
     except Exception as e:
         print(f"✗ API server failed: {e}")
         return False
+
 
 def main():
     """Run all tests"""
@@ -212,6 +219,7 @@ def main():
         print("⚠️  Some component tests failed. Check the errors above.")
 
     return passed == total
+
 
 if __name__ == "__main__":
     success = main()

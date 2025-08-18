@@ -67,6 +67,7 @@ def extract_debug_sections(log_file_path):
 
     return sections
 
+
 def save_debug_dump(log_file_path, output_file="debug_dump.json"):
     """Save all debug info to a JSON file for analysis"""
 
@@ -97,6 +98,7 @@ def save_debug_dump(log_file_path, output_file="debug_dump.json"):
 
     print(f"\n💾 Debug dump saved to: {output_file}")
     print(f"Use: cat {output_file} | jq . (if you have jq installed)")
+
 
 if __name__ == "__main__":
     import sys
