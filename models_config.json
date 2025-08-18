@@ -84,7 +84,7 @@
         "top_p": 0.9
       }
     },
-    "qwen3-coder-14b": {
+    "qwen3-coder-30b": {
       "name": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
       "type": "coder",
       "size": "30B",
