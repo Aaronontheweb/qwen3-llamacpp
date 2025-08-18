@@ -42,10 +42,6 @@ class LlamaBackend:
             "use_mmap": True,    # Use memory mapping
             "use_mlock": False,  # Don't lock memory
             "offload_kqv": True, # Offload KQV to GPU when available
-            # KV cache quantization - use Q8_0 for 2x memory savings with minimal quality loss
-            # Options: 0 (F32), 1 (F16), 2 (Q8_0), 3 (Q4_0), 4 (Q4_1), 5 (IQ2_XXS), 6 (IQ2_XS)
-            "type_k": 2,  # Q8_0 quantization for keys (8-bit)
-            "type_v": 2,  # Q8_0 quantization for values (8-bit)
         }
         
         # Update settings from config

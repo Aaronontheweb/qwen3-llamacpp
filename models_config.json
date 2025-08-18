@@ -6,7 +6,7 @@
       "size": "30B",
       "description": "Large instruction-following model for complex tasks",
       "max_context_tokens": 262144,
-      "n_gpu_layers": 32,
+      "n_gpu_layers": 40,
       "default_params": {
         "temperature": 0.7,
         "max_tokens": 8192,
@@ -55,7 +55,7 @@
       "size": "30B",
       "description": "Specialized for code generation and programming",
       "max_context_tokens": 262144,
-      "n_gpu_layers": 32,
+      "n_gpu_layers": 40,
       "default_params": {
         "temperature": 0.3,
         "max_tokens": 8192,
