@@ -34,13 +34,14 @@ class LlamaBackend:
         
         # llama.cpp settings
         self.llama_settings = {
-            "n_gpu_layers": -1,  # Use all available GPUs
+            "n_gpu_layers": -1,  # Use all available GPUs (default, can be overridden)
             "n_ctx": 262144,     # Context length - 256k tokens (let users decide)
             "n_batch": 512,      # Batch size
             "n_threads": os.cpu_count(),  # Use all CPU threads
             "verbose": False,    # Disable verbose output
             "use_mmap": True,    # Use memory mapping
             "use_mlock": False,  # Don't lock memory
+            "offload_kqv": True, # Offload KQV to GPU when available
         }
         
         # Update settings from config
@@ -101,37 +102,88 @@ class LlamaBackend:
             # Prepare llama.cpp settings
             settings = self.llama_settings.copy()
             
-            # Dynamically estimate context window based on available GPU memory
-            total_memory_mb, available_memory_mb = self.gpu_monitor.get_total_gpu_memory()
-            logger.info(f"GPU Memory - Total: {total_memory_mb}MB, Available: {available_memory_mb}MB")
-
-            # Heuristic: KV-cache memory per 1k tokens (MB)
-            # Approximate KV-cache memory cost per 1k tokens (MB).  Values are deliberately high-side
-            # to stay within GPU memory when multiple tensors are resident.
-            kv_mb_per_1k = {
-                "30B": 800,    # ~0.8 GB / 1k tokens (reduced from 1.3GB - was too conservative)
-                "14B": 400,    # ~0.4 GB / 1k tokens (reduced from 0.6GB)
-                "7B": 200,     # ~0.2 GB / 1k tokens (reduced from 0.27GB)
-                "4B": 100      # ~0.1 GB / 1k tokens (reduced from 0.13GB)
-            }
-            model_size = model_config.get("size", "7B")
-            kv_per_1k = kv_mb_per_1k.get(model_size, 300)  # fallback 0.3 GB per 1k tokens
-
-            # Reserve 70% of free memory for KV-cache to leave room for weights & overhead
-            kv_budget_mb = int(available_memory_mb * 0.7)
-            logger.info(f"KV-cache budget: {kv_budget_mb}MB (from {available_memory_mb}MB available)")
-            max_tokens_estimate = int((kv_budget_mb / kv_per_1k) * 1000)  # tokens
-            # Round down to nearest 1024 for safety
-            max_tokens_estimate = (max_tokens_estimate // 1024) * 1024
-
-            # Respect a hard upper cap (model training context or llama.cpp max)
-            hard_cap = model_config.get("max_context_tokens", 262144)
-            estimated_ctx = max(4096, min(max_tokens_estimate, hard_cap))
+            # Check if model has specific GPU layer configuration
+            if "n_gpu_layers" in model_config:
+                settings["n_gpu_layers"] = model_config["n_gpu_layers"]
+                logger.info(f"Using model-specific n_gpu_layers: {settings['n_gpu_layers']}")
+            
+            # Check if hybrid mode is enabled
+            hybrid_mode = model_config.get("hybrid_mode", False)
+            
+            if hybrid_mode:
+                logger.info("Hybrid CPU/GPU mode enabled - using system RAM for extended context")
+                
+                # Get system memory info
+                import psutil
+                mem = psutil.virtual_memory()
+                total_ram_mb = mem.total // (1024 * 1024)
+                available_ram_mb = mem.available // (1024 * 1024)
+                logger.info(f"System RAM - Total: {total_ram_mb}MB, Available: {available_ram_mb}MB")
+                
+                # Use model-specific KV-cache estimate or fall back to defaults
+                kv_per_1k = model_config.get("kv_cache_mb_per_1k", None)
+                if kv_per_1k is None:
+                    # Legacy fallback for models without the new config
+                    kv_mb_per_1k = {
+                        "30B": 175,    # Realistic for Qwen3 with GQA
+                        "14B": 100,    # Realistic for medium models
+                        "7B": 50,      # Realistic for smaller models  
+                        "4B": 25       # Realistic for tiny models
+                    }
+                    model_size = model_config.get("size", "7B")
+                    kv_per_1k = kv_mb_per_1k.get(model_size, 100)
+                
+                # In hybrid mode, use system RAM for KV-cache
+                # Reserve memory for OS and other processes
+                reserved_ram_mb = 8192  # Reserve 8GB for OS and other processes
+                usable_ram_mb = max(0, available_ram_mb - reserved_ram_mb)
+                
+                # Calculate context based on available RAM
+                kv_budget_mb = int(usable_ram_mb * 0.8)  # Use 80% of available RAM
+                logger.info(f"KV-cache budget (RAM): {kv_budget_mb}MB")
+                max_tokens_estimate = int((kv_budget_mb / kv_per_1k) * 1000)
+                
+                # Use effective context from config as starting point
+                target_context = model_config.get("effective_context_tokens", 131072)
+                estimated_ctx = min(max_tokens_estimate, target_context)
+                
+                logger.info(f"Hybrid mode context estimate: {estimated_ctx} tokens (using {kv_per_1k}MB per 1k tokens)")
+            else:
+                # Original GPU-only mode
+                total_memory_mb, available_memory_mb = self.gpu_monitor.get_total_gpu_memory()
+                logger.info(f"GPU Memory - Total: {total_memory_mb}MB, Available: {available_memory_mb}MB")
+                
+                # Use model-specific KV-cache estimate or fall back to conservative defaults
+                kv_per_1k = model_config.get("kv_cache_mb_per_1k", None)
+                if kv_per_1k is None:
+                    # Conservative defaults for GPU-only mode
+                    kv_mb_per_1k = {
+                        "30B": 800,    # Conservative for stability
+                        "14B": 400,    # Conservative for stability
+                        "7B": 200,     # Conservative for stability
+                        "4B": 100      # Conservative for stability
+                    }
+                    model_size = model_config.get("size", "7B")
+                    kv_per_1k = kv_mb_per_1k.get(model_size, 300)
+                
+                # Reserve memory for GPU operations
+                kv_budget_mb = int(available_memory_mb * 0.7)
+                logger.info(f"KV-cache budget (GPU): {kv_budget_mb}MB")
+                max_tokens_estimate = int((kv_budget_mb / kv_per_1k) * 1000)
+                
+                # Round down to nearest 1024 for safety
+                max_tokens_estimate = (max_tokens_estimate // 1024) * 1024
+                
+                # Respect hard upper cap
+                hard_cap = model_config.get("max_context_tokens", 262144)
+                estimated_ctx = max(4096, min(max_tokens_estimate, hard_cap))
+                
+                logger.info(f"GPU-only mode context: {estimated_ctx} tokens (using {kv_per_1k}MB per 1k tokens)")
 
             settings["n_ctx"] = estimated_ctx
-            logger.info(f"Estimated context window based on GPU memory: {estimated_ctx} tokens (model size {model_size})")
             
             # Adjust batch size crudely based on model size
+            model_size = model_config.get("size", "7B")
             if model_size == "30B":
                 settings["n_batch"] = 256
             elif model_size == "14B":
