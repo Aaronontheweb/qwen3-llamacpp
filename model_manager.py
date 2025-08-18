@@ -81,14 +81,30 @@ class ModelManagerCLI:
             # Check if model is downloaded
             model_name = model_config["name"]
             download_path = self.config["download_path"]
-            downloaded = is_model_downloaded(model_name, download_path)
+            
+            # Check for specific quantization if specified
+            quantization = model_config.get("quantization", None)
+            if quantization:
+                # Check if the specific quantization file exists
+                model_dir = os.path.join(download_path, model_name.replace("/", "_"))
+                downloaded = False
+                if os.path.exists(model_dir):
+                    for file in os.listdir(model_dir):
+                        if file.endswith('.gguf') and quantization in file:
+                            downloaded = True
+                            break
+            else:
+                downloaded = is_model_downloaded(model_name, download_path)
             
             # Check if it's the active model
             active = model_id == self.config.get("active_model")
             
             status = []
             if downloaded:
-                status.append("✓ Downloaded")
+                if quantization:
+                    status.append(f"✓ {quantization}")
+                else:
+                    status.append("✓ Downloaded")
             if active:
                 status.append("✓ Active")
             
