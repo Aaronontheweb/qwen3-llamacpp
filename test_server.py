@@ -4,9 +4,11 @@ Simple test script for Qwen3 Multi-GPU Server
 """
 
 import json
-import requests
 import time
-from typing import Dict, Any
+from typing import Any
+
+import requests
+
 
 def test_server_health(base_url: str = "http://localhost:8080") -> bool:
     """Test server health endpoint"""
@@ -22,6 +24,7 @@ def test_server_health(base_url: str = "http://localhost:8080") -> bool:
     except Exception as e:
         print(f"✗ Server health check error: {e}")
         return False
+
 
 def test_models_endpoint(base_url: str = "http://localhost:8080") -> bool:
     """Test models endpoint"""
@@ -40,6 +43,7 @@ def test_models_endpoint(base_url: str = "http://localhost:8080") -> bool:
         print(f"✗ Models endpoint error: {e}")
         return False
 
+
 def test_chat_completion(base_url: str = "http://localhost:8080", model: str = "qwen3-14b-instruct") -> bool:
     """Test chat completion endpoint"""
     try:
@@ -51,11 +55,11 @@ def test_chat_completion(base_url: str = "http://localhost:8080", model: str = "
             "temperature": 0.7,
             "max_tokens": 100
         }
-        
+
         response = requests.post(f"{base_url}/v1/chat/completions", json=payload)
         if response.status_code == 200:
             data = response.json()
-            print(f"✓ Chat completion successful")
+            print("✓ Chat completion successful")
             print(f"  Response: {data['choices'][0]['message']['content']}")
             return True
         else:
@@ -65,6 +69,7 @@ def test_chat_completion(base_url: str = "http://localhost:8080", model: str = "
     except Exception as e:
         print(f"✗ Chat completion error: {e}")
         return False
+
 
 def test_tool_calling(base_url: str = "http://localhost:8080", model: str = "qwen3-14b-instruct") -> bool:
     """Test tool calling functionality"""
@@ -96,12 +101,12 @@ def test_tool_calling(base_url: str = "http://localhost:8080", model: str = "qwe
             "temperature": 0.3,
             "max_tokens": 200
         }
-        
+
         response = requests.post(f"{base_url}/v1/chat/completions", json=payload)
         if response.status_code == 200:
             data = response.json()
-            print(f"✓ Tool calling test successful")
-            
+            print("✓ Tool calling test successful")
+
             # Check if tool calls were generated
             message = data['choices'][0]['message']
             if 'tool_calls' in message:
@@ -110,8 +115,8 @@ def test_tool_calling(base_url: str = "http://localhost:8080", model: str = "qwe
                     print(f"    Function: {tool_call['function']['name']}")
                     print(f"    Arguments: {tool_call['function']['arguments']}")
             else:
-                print(f"  No tool calls generated (this is normal for some models)")
-            
+                print("  No tool calls generated (this is normal for some models)")
+
             return True
         else:
             print(f"✗ Tool calling test failed: {response.status_code}")
@@ -120,6 +125,7 @@ def test_tool_calling(base_url: str = "http://localhost:8080", model: str = "qwe
     except Exception as e:
         print(f"✗ Tool calling test error: {e}")
         return False
+
 
 def test_admin_endpoints(base_url: str = "http://localhost:8080") -> bool:
     """Test admin endpoints"""
@@ -132,7 +138,7 @@ def test_admin_endpoints(base_url: str = "http://localhost:8080") -> bool:
         else:
             print(f"✗ Model status endpoint failed: {response.status_code}")
             return False
-        
+
         # Test GPU usage
         response = requests.get(f"{base_url}/admin/gpu_usage")
         if response.status_code == 200:
@@ -143,19 +149,20 @@ def test_admin_endpoints(base_url: str = "http://localhost:8080") -> bool:
         else:
             print(f"✗ GPU usage endpoint failed: {response.status_code}")
             return False
-        
+
         return True
     except Exception as e:
         print(f"✗ Admin endpoints error: {e}")
         return False
 
+
 def main():
     """Run all tests"""
     print("🧪 Qwen3 Multi-GPU Server Test Suite")
     print("=" * 50)
-    
+
     base_url = "http://localhost:8080"
-    
+
     tests = [
         ("Server Health", lambda: test_server_health(base_url)),
         ("Models Endpoint", lambda: test_models_endpoint(base_url)),
@@ -163,14 +170,14 @@ def main():
         ("Tool Calling", lambda: test_tool_calling(base_url)),
         ("Admin Endpoints", lambda: test_admin_endpoints(base_url)),
     ]
-    
+
     passed = 0
     total = len(tests)
-    
+
     for test_name, test_func in tests:
         print(f"\n🔍 Testing: {test_name}")
         print("-" * 30)
-        
+
         try:
             if test_func():
                 passed += 1
@@ -178,17 +185,18 @@ def main():
                 print(f"❌ Test failed: {test_name}")
         except Exception as e:
             print(f"❌ Test error: {test_name} - {e}")
-    
+
     print("\n" + "=" * 50)
     print(f"📊 Test Results: {passed}/{total} tests passed")
-    
+
     if passed == total:
         print("🎉 All tests passed! Server is working correctly.")
     else:
         print("⚠️  Some tests failed. Check server logs for details.")
-    
+
     return passed == total
+
 
 if __name__ == "__main__":
     success = main()
-    exit(0 if success else 1) 
+    exit(0 if success else 1)

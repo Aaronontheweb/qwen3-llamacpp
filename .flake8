@@ -31,4 +31,7 @@ per-file-ignores =
     # Allow unused variables and imports in test files
     test_*.py:F401,F841
     # Allow undefined names in openai_server (FastAPI background tasks)
-    openai_server.py:F821
+    openai_server.py:F821,C901
+    # Allow complex functions in model management (necessary complexity)
+    llama_backend.py:C901
+    model_manager.py:C901
