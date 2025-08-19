@@ -7,6 +7,9 @@ uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 jinja2>=3.1.2
 
+# Core dependencies needed by multiple files
+requests>=2.25.0
+
 # Utilities
 psutil>=5.9.0
 
@@ -19,3 +22,4 @@ httpx>=0.25.0
 ruff>=0.1.0
 flake8>=6.0.0
 mypy>=1.0.0
+types-requests
