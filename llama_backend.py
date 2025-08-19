@@ -389,7 +389,7 @@ class ModelManager:
         # Look for .gguf file matching the specified quantization, fallback to any .gguf file
         model_path = None
         preferred_quantization = model_config.get("quantization")
-        
+
         # First pass: look for specific quantization if specified
         if preferred_quantization:
             for root, _dirs, files in os.walk(model_dir):
@@ -403,7 +403,7 @@ class ModelManager:
                             break
                 if model_path:
                     break
-        
+
         # Second pass: fallback to any .gguf file if preferred quantization not found
         if not model_path:
             for root, _dirs, files in os.walk(model_dir):
