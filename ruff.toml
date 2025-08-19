@@ -55,7 +55,7 @@ ignore = [
 "openai_server.py" = ["F821"]    # Allow undefined names (FastAPI background tasks)
 
 [lint.isort]
-known-first-party = ["utils", "tool_parser", "llama_backend", "model_manager"]
+known-first-party = ["utils", "tool_parser", "model_manager"]
 
 [lint.mccabe]
 max-complexity = 10

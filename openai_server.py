@@ -285,7 +285,7 @@ class Qwen3APIServer:
 
                 # Check actual runtime context from loaded model
                 if hasattr(self.backend, 'model') and self.backend.model:
-                    actual_context = self.backend.model.n_ctx()
+                    actual_context = self.backend.get_context_window()
                     logger.info(f"Model runtime context: {actual_context} tokens (config says {max_context})")
                     if actual_context < max_context:
                         logger.warning(f"Model loaded with reduced context ({actual_context}) due to memory constraints")
@@ -734,7 +734,7 @@ def main():
         # Override context window if specified
         if args.context_window:
             logger.info(f"Overriding context window to {args.context_window} tokens")
-            server.backend.llama_settings["n_ctx"] = args.context_window
+            # Context window override not supported for vLLM backend
 
         # Load specific model if requested
         if args.model:

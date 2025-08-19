@@ -294,7 +294,6 @@ class VLLMBackend(BaseBackend):
                 frequency_penalty=kwargs.get("frequency_penalty", 0.0),
                 presence_penalty=kwargs.get("presence_penalty", 0.0),
                 repetition_penalty=kwargs.get("repetition_penalty", 1.0),
-                length_penalty=kwargs.get("length_penalty", 1.0),
                 seed=kwargs.get("seed")
             )
 
@@ -313,7 +312,7 @@ class VLLMBackend(BaseBackend):
         """
         Generate text with streaming using vLLM
 
-        Note: vLLM doesn't support true streaming in the same way as llama.cpp,
+        Note: vLLM doesn't support true streaming in the same way as other backends,
         but we can simulate it by generating in chunks
 
         Args:

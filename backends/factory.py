@@ -74,29 +74,6 @@ class BackendFactory:
         except ImportError as e:
             logger.warning(f"vLLM backend not available: {e}")
 
-        # Try to import llama.cpp backend (keeping for compatibility)
-        try:
-            from .llama_cpp_backend import LlamaCppBackend
-            cls.register_backend("llama_cpp", LlamaCppBackend)
-            cls.register_backend("llama.cpp", LlamaCppBackend)  # Alias
-        except ImportError as e:
-            logger.debug(f"llama.cpp backend not available: {e}")
-
-        # Try to import Transformers backend
-        try:
-            from .transformers_backend import TransformersBackend
-            cls.register_backend("transformers", TransformersBackend)
-            cls.register_backend("hf", TransformersBackend)  # Alias
-        except ImportError as e:
-            logger.debug(f"Transformers backend not available: {e}")
-
-        # Try to import ExLlama backend
-        try:
-            from .exllama_backend import ExLlamaBackend
-            cls.register_backend("exllama", ExLlamaBackend)
-            cls.register_backend("exllamav2", ExLlamaBackend)  # Alias
-        except ImportError as e:
-            logger.debug(f"ExLlama backend not available: {e}")
 
     @classmethod
     def get_available_backends(cls) -> list[str]:

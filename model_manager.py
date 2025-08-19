@@ -64,7 +64,6 @@ class ModelManager:
         return {
             "backend": {
                 "type": "vllm",
-                "fallback": "llama_cpp",
                 "vllm_config": {
                     "tensor_parallel_size": "auto",
                     "gpu_memory_utilization": 0.90
@@ -79,7 +78,7 @@ class ModelManager:
         """Initialize the backend based on configuration"""
         backend_config = self.config.get("backend", {})
         backend_type = backend_config.get("type", "vllm")
-        fallback_type = backend_config.get("fallback", "llama_cpp")
+        fallback_type = backend_config.get("fallback", None)
 
         # Get available backends
         available = get_available_backends()
@@ -98,7 +97,7 @@ class ModelManager:
             logger.warning(f"Using first available backend: {first_available}")
             self._create_backend(first_available)
         else:
-            raise RuntimeError("No backends available. Please install vLLM or llama-cpp-python.")
+            raise RuntimeError("No backends available. Please install vLLM.")
 
     def _create_backend(self, backend_type: str):
         """Create backend instance"""
@@ -107,8 +106,6 @@ class ModelManager:
         # Get backend-specific config
         if backend_type == "vllm":
             specific_config = backend_config.get("vllm_config", {})
-        elif backend_type in ["llama_cpp", "llama.cpp"]:
-            specific_config = backend_config.get("llama_cpp_config", {})
         else:
             specific_config = {}
 
@@ -235,21 +232,7 @@ class ModelManager:
                     logger.info(f"Using HuggingFace model: {model_name}")
                     return str(model_name)
 
-        # For llama.cpp, use GGUF file
-        elif self.current_backend_type in ["llama_cpp", "llama.cpp"]:
-            gguf_name = model_config.get("gguf_name", model_config.get("name"))
-            if gguf_name:
-                download_path = self.config.get("download_path", "./models")
-                model_dir = os.path.join(download_path, gguf_name.replace("/", "_"))
-
-                # Look for GGUF file
-                if os.path.exists(model_dir):
-                    for root, _, files in os.walk(model_dir):
-                        for file in files:
-                            if file.endswith('.gguf'):
-                                gguf_path = os.path.join(root, file)
-                                logger.info(f"Found GGUF file: {gguf_path}")
-                                return str(gguf_path)
+        # Only vLLM backend supported
 
         # Fallback to name field
         name = model_config.get("name")
@@ -289,11 +272,7 @@ class ModelManager:
         # vLLM needs HuggingFace models
         compatible["vllm"] = bool(model_config.get("name"))
 
-        # llama.cpp needs GGUF files
-        compatible["llama_cpp"] = bool(
-            model_config.get("gguf_name")
-            or (model_config.get("name") and "GGUF" in model_config.get("name", ""))
-        )
+        # Only vLLM backend supported
 
         return compatible
 
@@ -405,8 +384,7 @@ class ModelManagerCLI:
             backend_info = []
             if model_config.get("name"):
                 backend_info.append("vLLM")
-            if model_config.get("gguf_name"):
-                backend_info.append("llama.cpp")
+            # Only vLLM backend supported
 
             status = []
             if active:
@@ -481,9 +459,7 @@ class ModelManagerCLI:
         info_text.append("\nBackend Compatibility:\n", style="cyan")
         if model_config.get("name"):
             info_text.append("  ✓ vLLM (HuggingFace format)\n", style="green")
-        if model_config.get("gguf_name"):
-            info_text.append("  ✓ llama.cpp (GGUF format)\n", style="green")
-        if not model_config.get("name") and not model_config.get("gguf_name"):
+        if not model_config.get("name"):
             info_text.append("  ✗ No compatible formats found\n", style="red")
 
         panel = Panel(info_text, title=f"Model Information: {model_id}", border_style="blue")
@@ -510,7 +486,8 @@ class ModelManagerCLI:
         status_text.append("\nBackend Configuration:\n", style="cyan")
         backend_config = self.config.get("backend", {})
         status_text.append(f"  Primary: {backend_config.get('type', 'vllm')}\n", style="white")
-        status_text.append(f"  Fallback: {backend_config.get('fallback', 'llama_cpp')}\n", style="white")
+        if backend_config.get('fallback'):
+            status_text.append(f"  Fallback: {backend_config.get('fallback')}\n", style="white")
 
         # Available backends
         from backends.factory import get_available_backends
