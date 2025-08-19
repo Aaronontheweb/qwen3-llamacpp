@@ -54,9 +54,9 @@
       "type": "coder",
       "size": "30B",
       "description": "Specialized for code generation and programming",
-      "max_context_tokens": 65536,
-      "n_gpu_layers": -1,
-      "quantization": "Q2_K",
+      "max_context_tokens": 32768,
+      "n_gpu_layers": 35,
+      "quantization": "Q3_K_M",
       "default_params": {
         "temperature": 0.3,
         "max_tokens": 8192,
