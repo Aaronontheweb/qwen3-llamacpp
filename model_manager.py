@@ -399,7 +399,7 @@ class ModelManagerCLI:
         for model_id, model_config in models.items():
             # Check if it's the active model
             active = model_id == self.config.get("active_model")
-            
+
             # Check backend compatibility
             backend_info = []
             if model_config.get("name"):
@@ -410,7 +410,7 @@ class ModelManagerCLI:
             status = []
             if active:
                 status.append("✓ Active")
-            
+
             status_text = " | ".join(status) if status else "Available"
             backend_text = ", ".join(backend_info) if backend_info else "None"
 
@@ -434,7 +434,7 @@ class ModelManagerCLI:
     def switch_model(self, model_id: str):
         """Switch to a different model"""
         models = self.config["models"]
-        
+
         if model_id not in models:
             console.print(f"[red]Model '{model_id}' not found in configuration[/red]")
             available_models = list(models.keys())
@@ -444,7 +444,7 @@ class ModelManagerCLI:
         # Update active model in config
         self.config["active_model"] = model_id
         self._save_config()
-        
+
         console.print(f"[green]Switched active model to: {model_id}[/green]")
         console.print(f"Model: {models[model_id]['name']}")
         console.print("[yellow]Note: Restart the server for changes to take effect[/yellow]")
@@ -452,13 +452,13 @@ class ModelManagerCLI:
     def info_model(self, model_id: str):
         """Show detailed information about a model"""
         models = self.config["models"]
-        
+
         if model_id not in models:
             console.print(f"[red]Model '{model_id}' not found[/red]")
             return
 
         model_config = models[model_id]
-        
+
         info_text = Text()
         info_text.append(f"Model ID: {model_id}\n", style="cyan")
         info_text.append(f"Name: {model_config.get('name', 'N/A')}\n", style="white")
@@ -468,7 +468,7 @@ class ModelManagerCLI:
         info_text.append(f"Description: {model_config.get('description', 'N/A')}\n", style="white")
         info_text.append(f"Max Context: {model_config.get('max_context_tokens', 'N/A')} tokens\n", style="white")
         info_text.append(f"Quantization: {model_config.get('quantization', 'Auto')}\n", style="white")
-        
+
         # Default parameters
         default_params = model_config.get("default_params", {})
         if default_params:
@@ -504,13 +504,13 @@ class ModelManagerCLI:
         # Active model
         active_model = self.config.get("active_model")
         status_text.append(f"\nActive Model: {active_model or 'None'}\n", style="cyan")
-        
+
         # Backend status
-        status_text.append(f"\nBackend Configuration:\n", style="cyan")
+        status_text.append("\nBackend Configuration:\n", style="cyan")
         backend_config = self.config.get("backend", {})
         status_text.append(f"  Primary: {backend_config.get('type', 'vllm')}\n", style="white")
         status_text.append(f"  Fallback: {backend_config.get('fallback', 'llama_cpp')}\n", style="white")
-        
+
         # Available backends
         from backends.factory import get_available_backends
         available_backends = get_available_backends()
