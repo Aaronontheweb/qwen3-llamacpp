@@ -71,7 +71,8 @@ jobs:
     - name: Type check with mypy
       run: |
         # Run mypy with lenient settings since we can't install all dependencies
-        mypy . --ignore-missing-imports --no-strict-optional --warn-return-any --warn-unreachable --allow-untyped-defs --allow-incomplete-defs
+        # Install missing types automatically and ignore GPU-dependent imports
+        mypy . --install-types --non-interactive --ignore-missing-imports --no-strict-optional --warn-return-any --warn-unreachable --allow-untyped-defs --allow-incomplete-defs
     
     - name: Check imports (without GPU dependencies)
       run: |
