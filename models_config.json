@@ -3,12 +3,17 @@
     "type": "vllm",
     "vllm_config": {
       "tensor_parallel_size": 2,
-      "gpu_memory_utilization": 0.85,
-      "max_num_seqs": 32,
-      "kv_cache_dtype": "auto",
+      "gpu_memory_utilization": 0.95,
+      "max_num_seqs": 16,
+      "kv_cache_dtype": "fp8",
       "enable_prefix_caching": true,
       "enable_chunked_prefill": true,
-      "trust_remote_code": true
+      "trust_remote_code": true,
+      "disable_custom_all_reduce": false,
+      "enforce_eager": false,
+      "use_v2_block_manager": true,
+      "block_size": 32,
+      "swap_space": 4
     }
   },
   "models": {
@@ -66,6 +71,30 @@
       "size": "30B",
       "description": "Specialized for code generation and programming",
       "quantization": "AWQ",
+      "default_params": {
+        "temperature": 0.3,
+        "max_tokens": 8192,
+        "top_p": 0.95
+      }
+    },
+    "qwen3-coder-14b": {
+      "name": "Qwen/Qwen2.5-Coder-14B-Instruct",
+      "type": "coder", 
+      "size": "14B",
+      "description": "Smaller coding model - should allow much larger context window",
+      "quantization": null,
+      "default_params": {
+        "temperature": 0.3,
+        "max_tokens": 8192,
+        "top_p": 0.95
+      }
+    },
+    "qwen3-coder-7b": {
+      "name": "Qwen/Qwen2.5-Coder-7B-Instruct", 
+      "type": "coder",
+      "size": "7B", 
+      "description": "Fast coding model with large context support",
+      "quantization": null,
       "default_params": {
         "temperature": 0.3,
         "max_tokens": 8192,
