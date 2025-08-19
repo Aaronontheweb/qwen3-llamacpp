@@ -158,8 +158,12 @@ class VLLMBackend(BaseBackend):
         # Use 80% of available memory to leave some headroom
         max_context_from_memory = int((total_available_gb * 1024 * 0.8) / kv_mb_per_1k_tokens * 1000)
         
-        # Set bounds: minimum 16K, maximum 48K for stability  
-        target_context = max(16384, min(max_context_from_memory, 49152))
+        # Get configurable bounds from settings
+        min_context = settings.get("min_context_length", 16384)  # Default 16K minimum
+        max_context = settings.get("max_context_length", 49152)  # Default 48K maximum
+        
+        # Apply bounds to calculated context
+        target_context = max(min_context, min(max_context_from_memory, max_context))
         
         logger.info(f"Setting target context length: {target_context} tokens (estimated max: {max_context_from_memory})")
 
