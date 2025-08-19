@@ -32,8 +32,11 @@ rich>=13.0.0
 aiohttp>=3.9.0
 httpx>=0.25.0
 
+# Memory optimizations 
+flash-attn>=2.5.0  # For FlashAttention support - significant memory savings
+einops>=0.8.0  # Required by flash-attn
+
 # Optional optimizations (install separately if needed)
-# flash-attn>=2.5.0  # For FlashAttention support
 # xformers>=0.0.23  # For memory efficient attention
 
 # Development and testing
