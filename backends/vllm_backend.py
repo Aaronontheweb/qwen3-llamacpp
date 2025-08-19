@@ -43,8 +43,8 @@ class VLLMBackend(BaseBackend):
         self.llm_engine: Optional[Any] = None
         self.gpu_monitor = get_gpu_monitor()
 
-        # Detect available GPUs
-        self.gpu_count = self._detect_gpus()
+        # Detect available GPUs and set CUDA_VISIBLE_DEVICES
+        self.gpu_count = self._detect_and_setup_gpus()
 
         # vLLM configuration with defaults
         self.vllm_config = {
@@ -78,8 +78,8 @@ class VLLMBackend(BaseBackend):
         logger.info(f"vLLM Backend initialized with {self.gpu_count} GPU(s)")
         logger.info(f"Tensor parallel size: {self.vllm_config['tensor_parallel_size']}")
 
-    def _detect_gpus(self) -> int:
-        """Detect number of available GPUs"""
+    def _detect_and_setup_gpus(self) -> int:
+        """Detect available GPUs and setup CUDA_VISIBLE_DEVICES environment variable"""
         if not TORCH_AVAILABLE:
             return 0
 
@@ -87,10 +87,28 @@ class VLLMBackend(BaseBackend):
             count = torch.cuda.device_count()
             if count > 0:
                 logger.info(f"Detected {count} CUDA device(s)")
+                
+                # Setup CUDA_VISIBLE_DEVICES for multi-GPU if not already set
+                import os
+                if "CUDA_VISIBLE_DEVICES" not in os.environ:
+                    if count > 1:
+                        # Use all available GPUs
+                        gpu_ids = ",".join(str(i) for i in range(count))
+                        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_ids
+                        logger.info(f"Set CUDA_VISIBLE_DEVICES={gpu_ids} for multi-GPU support")
+                    else:
+                        # Single GPU
+                        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+                        logger.info("Set CUDA_VISIBLE_DEVICES=0 for single GPU")
+                else:
+                    logger.info(f"CUDA_VISIBLE_DEVICES already set: {os.environ['CUDA_VISIBLE_DEVICES']}")
+                
+                # Log GPU details
                 for i in range(count):
                     name = torch.cuda.get_device_name(i)
                     memory = torch.cuda.get_device_properties(i).total_memory / (1024**3)
                     logger.info(f"  GPU {i}: {name} ({memory:.1f} GB)")
+            
             return int(count)
         except Exception as e:
             logger.warning(f"Failed to detect GPUs: {e}")
