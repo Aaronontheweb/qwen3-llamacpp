@@ -21,9 +21,9 @@ class BaseBackend(ABC):
             config: Backend configuration dictionary
         """
         self.config = config
-        self.model = None
-        self.model_path = None
-        self.model_config = None
+        self.model: Optional[Any] = None
+        self.model_path: Optional[str] = None
+        self.model_config: Optional[dict[str, Any]] = None
 
     @abstractmethod
     def load_model(self, model_path: str, model_config: dict[str, Any]) -> bool:

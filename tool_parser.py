@@ -29,7 +29,7 @@ class Qwen3ToolParser:
         # Remove complex fallback patterns - Jinja template should enforce canonical format
 
         # Track parsing statistics
-        self.stats = {
+        self.stats: dict[str, int] = {
             "total_calls": 0,
             "successful_parses": 0,
             "failed_parses": 0,
@@ -206,7 +206,7 @@ class Qwen3ToolParser:
         Returns:
             Dictionary with parsing statistics
         """
-        return self.stats.copy()
+        return dict(self.stats)
 
     def reset_stats(self):
         """Reset parsing statistics"""

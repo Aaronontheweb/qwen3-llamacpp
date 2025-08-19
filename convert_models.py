@@ -25,7 +25,8 @@ class ModelConverter:
         """Load model configuration"""
         try:
             with open(config_path) as f:
-                return json.load(f)
+                config_data = json.load(f)
+                return dict(config_data) if isinstance(config_data, dict) else {}
         except Exception as e:
             logger.error(f"Failed to load config: {e}")
             return {}

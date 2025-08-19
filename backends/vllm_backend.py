@@ -6,7 +6,7 @@ import gc
 import logging
 import time
 from collections.abc import Generator
-from typing import Any
+from typing import Any, Optional
 
 try:
     from vllm import LLM, SamplingParams
@@ -40,7 +40,7 @@ class VLLMBackend(BaseBackend):
             config: Backend configuration with vLLM settings
         """
         super().__init__(config)
-        self.llm_engine = None
+        self.llm_engine: Optional[Any] = None
         self.gpu_monitor = get_gpu_monitor()
 
         # Detect available GPUs
@@ -207,7 +207,8 @@ class VLLMBackend(BaseBackend):
             self.model_config = model_config
 
             logger.info(f"✓ Model loaded successfully in {load_time:.2f}s")
-            logger.info(f"Max model length: {self.llm_engine.llm_engine.model_config.max_model_len}")
+            if self.llm_engine:
+                logger.info(f"Max model length: {self.llm_engine.llm_engine.model_config.max_model_len}")
 
             # Log memory status after loading
             self.gpu_monitor.log_memory_status()

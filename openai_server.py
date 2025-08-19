@@ -11,7 +11,7 @@ from collections.abc import Generator
 from typing import Any, Optional, Union
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -145,7 +145,7 @@ class Qwen3APIServer:
         self.template_manager = TemplateManager(template_dir)
 
         # Download tracking
-        self.download_status = {}
+        self.download_status: dict[str, dict[str, Any]] = {}
 
         # Load active model
         active_model = self.config.get("active_model")
@@ -200,7 +200,8 @@ class Qwen3APIServer:
         """Load configuration file"""
         try:
             with open(self.config_path) as f:
-                return json.load(f)
+                config_data = json.load(f)
+                return dict(config_data) if isinstance(config_data, dict) else {}
         except FileNotFoundError:
             logger.error(f"Configuration file not found: {self.config_path}")
             raise
@@ -304,7 +305,7 @@ class Qwen3APIServer:
                     raise HTTPException(status_code=400, detail=f"Prompt length ({prompt_tokens} tokens) exceeds maximum supported context window ({max_context} tokens)")
 
                 # Prepare generation parameters
-                generation_params = {
+                generation_params: dict[str, Any] = {
                     "temperature": request.temperature,
                     "max_tokens": request.max_tokens,
                     "top_p": request.top_p,
@@ -333,7 +334,7 @@ class Qwen3APIServer:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/admin/switch_model")
-        async def switch_model(request: ModelSwitchRequest):
+        async def switch_model(request: ModelSwitchRequest, background_tasks: BackgroundTasks):
             """Switch to a different model"""
             try:
                 # Check if model is downloaded first
@@ -387,7 +388,7 @@ class Qwen3APIServer:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/admin/download_model")
-        async def download_model(request: ModelSwitchRequest):
+        async def download_model(request: ModelSwitchRequest, background_tasks: BackgroundTasks):
             """Download a model on-demand"""
             try:
                 # Check if model is already downloaded
@@ -426,11 +427,9 @@ class Qwen3APIServer:
         try:
             self.download_status[model_id] = {"status": "downloading", "progress": 0}
 
-            # Create a temporary model manager for downloading
-            temp_manager = get_model_manager(self.config)
-
-            # Download the model
-            success = temp_manager.download_model(model_id)
+            # TODO: Implement model downloading functionality
+            # For now, mark as failed since download_model is not implemented
+            success = False
 
             if success:
                 self.download_status[model_id] = {"status": "completed", "progress": 100}
@@ -542,7 +541,7 @@ class Qwen3APIServer:
             logger.info(f"CLEAN TEXT: {clean_text!r}")
 
             # Prepare choice
-            choice = {
+            choice: dict[str, Any] = {
                 "index": 0,
                 "message": {
                     "role": "assistant",

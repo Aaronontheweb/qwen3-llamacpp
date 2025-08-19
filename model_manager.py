@@ -7,6 +7,7 @@ import logging
 import os
 from typing import Any, Optional
 
+from backends.base import BaseBackend
 from backends.factory import BackendFactory, get_available_backends
 from utils.gpu_monitor import get_gpu_monitor
 
@@ -25,9 +26,9 @@ class ModelManager:
         """
         self.config_path = config_path
         self.config = self._load_config()
-        self.backend = None
-        self.current_model_id = None
-        self.current_backend_type = None
+        self.backend: Optional[BaseBackend] = None
+        self.current_model_id: Optional[str] = None
+        self.current_backend_type: Optional[str] = None
         self.gpu_monitor = get_gpu_monitor()
 
         # Initialize backend
@@ -41,9 +42,9 @@ class ModelManager:
 
         try:
             with open(self.config_path) as f:
-                config = json.load(f)
+                config_data = json.load(f)
                 logger.info(f"Loaded configuration from {self.config_path}")
-                return config
+                return dict(config_data) if isinstance(config_data, dict) else self._get_default_config()
         except Exception as e:
             logger.error(f"Failed to load config: {e}. Using defaults.")
             return self._get_default_config()
@@ -184,15 +185,18 @@ class ModelManager:
 
         # Load model
         logger.info(f"Loading model {model_id} with {self.current_backend_type} backend")
+        if not self.backend:
+            logger.error("No backend available")
+            return False
         success = self.backend.load_model(model_path, model_config)
 
         if success:
             self.current_model_id = model_id
             logger.info(f"Successfully loaded model: {model_id}")
+            return True
         else:
             logger.error(f"Failed to load model: {model_id}")
-
-        return success
+            return False
 
     def _get_model_path(self, model_config: dict[str, Any]) -> Optional[str]:
         """
@@ -208,18 +212,18 @@ class ModelManager:
         if self.current_backend_type == "vllm":
             # Check if we have a local HF model
             model_name = model_config.get("name")
-            if model_name:
+            if model_name and isinstance(model_name, str):
                 # Check local directory first
                 download_path = self.config.get("download_path", "./models")
                 local_path = os.path.join(download_path, model_name.replace("/", "_"))
 
                 if os.path.exists(local_path):
                     logger.info(f"Using local HF model: {local_path}")
-                    return local_path
+                    return str(local_path)
                 else:
                     # Use HuggingFace model ID for auto-download
                     logger.info(f"Using HuggingFace model: {model_name}")
-                    return model_name
+                    return str(model_name)
 
         # For llama.cpp, use GGUF file
         elif self.current_backend_type in ["llama_cpp", "llama.cpp"]:
@@ -235,10 +239,11 @@ class ModelManager:
                             if file.endswith('.gguf'):
                                 gguf_path = os.path.join(root, file)
                                 logger.info(f"Found GGUF file: {gguf_path}")
-                                return gguf_path
+                                return str(gguf_path)
 
         # Fallback to name field
-        return model_config.get("name")
+        name = model_config.get("name")
+        return str(name) if name and isinstance(name, str) else None
 
     def get_current_model(self) -> Optional[str]:
         """Get current model ID"""

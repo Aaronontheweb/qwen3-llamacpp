@@ -3,6 +3,7 @@ GPU monitoring utilities for Qwen3 multi-GPU server
 """
 
 import logging
+from typing import Any
 
 try:
     import pynvml
@@ -33,7 +34,7 @@ class GPUMonitor:
 
     def get_gpu_info(self) -> list[dict]:
         """Get information about all available GPUs"""
-        gpu_info = []
+        gpu_info: list[dict[str, Any]] = []
 
         if not self.nvml_available:
             return gpu_info
