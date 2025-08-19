@@ -2,7 +2,7 @@
   "backend": {
     "type": "vllm",
     "vllm_config": {
-      "tensor_parallel_size": "auto",
+      "tensor_parallel_size": 2,
       "gpu_memory_utilization": 0.85,
       "max_num_seqs": 32,
       "kv_cache_dtype": "auto",
