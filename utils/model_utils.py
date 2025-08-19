@@ -1,19 +1,18 @@
 """
-Model utilities for Qwen3 multi-GPU server
+Model utilities for downloading and managing models
 """
 
+import glob
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
-import requests
-
-logger = logging.getLogger("qwen3_server.model_utils")
+logger = logging.getLogger(__name__)
 
 
 def validate_model_config(model_config: dict) -> bool:
     """
-    Validate a model configuration
+    Validate model configuration
 
     Args:
         model_config: Model configuration dictionary
@@ -21,78 +20,47 @@ def validate_model_config(model_config: dict) -> bool:
     Returns:
         True if valid, False otherwise
     """
-    required_fields = ["name", "type", "size", "quantization", "description"]
+    required_fields = ["name", "type", "size", "description"]
 
     for field in required_fields:
         if field not in model_config:
-            logger.error(f"Missing required field '{field}' in model config")
+            logger.error(f"Missing required field: {field}")
             return False
+
+    # Validate model type
+    valid_types = ["instruction", "chat", "coder"]
+    if model_config["type"] not in valid_types:
+        logger.error(f"Invalid model type: {model_config['type']}. Must be one of {valid_types}")
+        return False
 
     # Validate size format
     size = model_config["size"]
-    if not isinstance(size, str) or not size.endswith("B"):
-        logger.error(f"Invalid size format: {size}. Must end with 'B' (e.g., '14B')")
-        return False
-
-    # Validate quantization
-    valid_quantizations = ["4bit", "8bit", "16bit", "32bit"]
-    if model_config["quantization"] not in valid_quantizations:
-        logger.error(f"Invalid quantization: {model_config['quantization']}. "
-                     f"Must be one of: {valid_quantizations}")
+    if not isinstance(size, str) or not (size.endswith("B") or size.endswith("M")):
+        logger.error(f"Invalid size format: {size}. Must end with 'B' or 'M'")
         return False
 
     return True
 
 
-def get_model_file_size(model_name: str, file_name: str = "model.gguf") -> Optional[int]:
-    """
-    Get the file size of a model file from HuggingFace
-
-    Args:
-        model_name: HuggingFace model name
-        file_name: Name of the model file
-
-    Returns:
-        File size in bytes, or None if not found
-    """
-    try:
-        # Try to get file info from HuggingFace
-        url = f"https://huggingface.co/{model_name}/resolve/main/{file_name}"
-        response = requests.head(url, allow_redirects=True)
-
-        if response.status_code == 200:
-            return int(response.headers.get("content-length", 0))
-        else:
-            logger.warning(f"Could not get file size for {model_name}/{file_name}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Error getting file size for {model_name}/{file_name}: {e}")
-        return None
-
-
 def estimate_download_time(file_size_bytes: int, download_speed_mbps: float = 50.0) -> float:
     """
-    Estimate download time for a model file
+    Estimate download time for a file
 
     Args:
         file_size_bytes: File size in bytes
-        download_speed_mbps: Download speed in Mbps
+        download_speed_mbps: Download speed in Mbps (default: 50 Mbps)
 
     Returns:
-        Estimated time in minutes
+        Estimated download time in seconds
     """
-    if download_speed_mbps <= 0:
+    if file_size_bytes <= 0:
         return 0.0
 
-    # Convert to MB
-    file_size_mb = file_size_bytes / (1024 * 1024)
+    # Convert Mbps to bytes per second
+    # 1 Mbps = 1,000,000 bits per second = 125,000 bytes per second
+    download_speed_bps = download_speed_mbps * 125_000
 
-    # Calculate time in seconds
-    time_seconds = (file_size_mb * 8) / download_speed_mbps
-
-    # Convert to minutes
-    return time_seconds / 60
+    return file_size_bytes / download_speed_bps
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -108,27 +76,33 @@ def format_file_size(size_bytes: int) -> str:
     if size_bytes == 0:
         return "0 B"
 
-    size_names = ["B", "KB", "MB", "GB", "TB"]
-    i = 0
-    while size_bytes >= 1024 and i < len(size_names) - 1:
-        size_bytes /= 1024.0
-        i += 1
+    size_units = ["B", "KB", "MB", "GB", "TB"]
+    unit_index = 0
 
-    return f"{size_bytes:.1f} {size_names[i]}"
+    size = float(size_bytes)
+    while size >= 1024.0 and unit_index < len(size_units) - 1:
+        size /= 1024.0
+        unit_index += 1
+
+    # Format with appropriate precision
+    if unit_index == 0:
+        return f"{int(size)} {size_units[unit_index]}"
+    else:
+        return f"{size:.1f} {size_units[unit_index]}"
 
 
 def get_model_path(model_name: str, download_path: str) -> str:
     """
-    Get the local path for a model
+    Get local path for a model
 
     Args:
         model_name: HuggingFace model name
         download_path: Base download path
 
     Returns:
-        Full path to the model directory
+        Local model path
     """
-    # Convert model name to directory name
+    # Replace / with _ to create valid directory name
     dir_name = model_name.replace("/", "_")
     return os.path.join(download_path, dir_name)
 
@@ -150,14 +124,27 @@ def is_model_downloaded(model_name: str, download_path: str) -> bool:
     if not os.path.exists(model_path):
         return False
 
-    # Look for any .gguf file in the model directory (including subdirectories)
-    for root, _dirs, files in os.walk(model_path):
-        for file in files:
-            if file.endswith('.gguf'):
-                gguf_file = os.path.join(root, file)
-                # Check if file is not empty
-                if os.path.exists(gguf_file) and os.path.getsize(gguf_file) > 0:
-                    return True
+    # Look for key HuggingFace model files
+    required_files = ['config.json', 'tokenizer.json']
+    model_files = ['pytorch_model.bin', 'model.safetensors', 'pytorch_model-00001-of-*.bin']
+
+    # Check for required config files
+    for required_file in required_files:
+        file_path = os.path.join(model_path, required_file)
+        if not os.path.exists(file_path):
+            return False
+
+    # Check for at least one model file
+    for pattern in model_files:
+        if '*' in pattern:
+            # Handle glob patterns
+            matches = glob.glob(os.path.join(model_path, pattern))
+            if matches:
+                return True
+        else:
+            file_path = os.path.join(model_path, pattern)
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                return True
 
     return False
 
@@ -172,26 +159,36 @@ def get_downloaded_models(download_path: str) -> list[dict[str, Any]]:
     Returns:
         List of model information dictionaries
     """
-    models = []
+    models: list[dict[str, Any]] = []
 
     if not os.path.exists(download_path):
         return models
 
-    for item in os.listdir(download_path):
-        item_path = os.path.join(download_path, item)
-        if os.path.isdir(item_path):
-            gguf_file = os.path.join(item_path, "model.gguf")
-            if os.path.exists(gguf_file):
-                # Get file size
-                file_size = os.path.getsize(gguf_file)
+    try:
+        for item in os.listdir(download_path):
+            model_dir = os.path.join(download_path, item)
+            if os.path.isdir(model_dir):
+                # Convert directory name back to model name
+                model_name = item.replace("_", "/")
 
-                models.append({
-                    "name": item.replace("_", "/"),
-                    "path": item_path,
-                    "size_bytes": file_size,
-                    "size_formatted": format_file_size(file_size),
-                    "downloaded_at": os.path.getctime(gguf_file)
-                })
+                if is_model_downloaded(model_name, download_path):
+                    # Calculate total size
+                    total_size = 0
+                    for root, _dirs, files in os.walk(model_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            if os.path.exists(file_path):
+                                total_size += os.path.getsize(file_path)
+
+                    models.append({
+                        "name": model_name,
+                        "path": model_dir,
+                        "size_bytes": total_size,
+                        "size_formatted": format_file_size(total_size)
+                    })
+
+    except Exception as e:
+        logger.error(f"Error listing downloaded models: {e}")
 
     return models
 
@@ -204,89 +201,27 @@ def cleanup_incomplete_downloads(download_path: str) -> int:
         download_path: Base download path
 
     Returns:
-        Number of cleaned up directories
+        Number of items cleaned up
     """
     cleaned_count = 0
 
     if not os.path.exists(download_path):
         return cleaned_count
 
-    for item in os.listdir(download_path):
-        item_path = os.path.join(download_path, item)
-        if os.path.isdir(item_path):
-            gguf_file = os.path.join(item_path, "model.gguf")
+    try:
+        for item in os.listdir(download_path):
+            item_path = os.path.join(download_path, item)
+            if os.path.isdir(item_path):
+                # Convert directory name back to model name
+                model_name = item.replace("_", "/")
 
-            # Check if GGUF file is missing or incomplete
-            if not os.path.exists(gguf_file) or os.path.getsize(gguf_file) == 0:
-                try:
+                if not is_model_downloaded(model_name, download_path):
+                    logger.info(f"Cleaning up incomplete download: {item}")
                     import shutil
                     shutil.rmtree(item_path)
-                    logger.info(f"Cleaned up incomplete download: {item}")
                     cleaned_count += 1
-                except Exception as e:
-                    logger.error(f"Error cleaning up {item}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
 
     return cleaned_count
-
-
-def validate_gguf_file(file_path: str) -> bool:
-    """
-    Validate a GGUF file
-
-    Args:
-        file_path: Path to the GGUF file
-
-    Returns:
-        True if valid, False otherwise
-    """
-    if not os.path.exists(file_path):
-        return False
-
-    # Check file size
-    file_size = os.path.getsize(file_path)
-    if file_size == 0:
-        return False
-
-    # Check file header (basic validation)
-    try:
-        with open(file_path, 'rb') as f:
-            header = f.read(4)
-            # GGUF files start with "GGUF"
-            if header != b'GGUF':
-                logger.warning(f"Invalid GGUF file header: {file_path}")
-                return False
-    except Exception as e:
-        logger.error(f"Error reading GGUF file {file_path}: {e}")
-        return False
-
-    return True
-
-
-def get_model_info_from_gguf(file_path: str) -> Optional[dict[str, Any]]:
-    """
-    Extract basic information from a GGUF file
-
-    Args:
-        file_path: Path to the GGUF file
-
-    Returns:
-        Model information dictionary or None
-    """
-    try:
-        # This is a basic implementation - in practice, you might want to use
-        # llama-cpp-python to get more detailed information
-        if not validate_gguf_file(file_path):
-            return None
-
-        file_size = os.path.getsize(file_path)
-
-        return {
-            "file_path": file_path,
-            "file_size_bytes": file_size,
-            "file_size_formatted": format_file_size(file_size),
-            "valid": True
-        }
-
-    except Exception as e:
-        logger.error(f"Error getting model info from {file_path}: {e}")
-        return None

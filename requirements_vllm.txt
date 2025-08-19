@@ -1,0 +1,40 @@
+# vLLM Multi-GPU Backend Requirements
+# Python 3.8+ required
+
+# Core vLLM and dependencies
+vllm==0.6.0
+torch>=2.1.0
+transformers>=4.45.0
+accelerate>=0.25.0
+safetensors>=0.4.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# API Server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+jinja2>=3.1.2
+
+# Monitoring
+pynvml>=11.5.0
+psutil>=5.9.0
+prometheus-client>=0.19.0
+
+# Model conversion utilities
+huggingface-hub>=0.19.0
+tokenizers>=0.15.0
+
+# Async support
+aiohttp>=3.9.0
+asyncio>=3.4.3
+
+# Optional optimizations
+flash-attn>=2.5.0  # For FlashAttention support
+xformers>=0.0.23  # For memory efficient attention
+triton>=2.1.0  # For custom kernels
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0

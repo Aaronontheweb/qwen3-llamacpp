@@ -1,0 +1,25 @@
+# Minimal requirements for CI/CD testing (no GPU dependencies)
+# This file is used by GitHub Actions for validation
+
+# API Server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+jinja2>=3.1.2
+
+# Core dependencies needed by multiple files
+requests>=2.25.0
+
+# Utilities
+psutil>=5.9.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0
+
+# Linting and validation
+ruff>=0.1.0
+flake8>=6.0.0
+mypy>=1.0.0
+types-requests

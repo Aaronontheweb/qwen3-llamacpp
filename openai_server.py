@@ -11,13 +11,13 @@ from collections.abc import Generator
 from typing import Any, Optional, Union
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
 
-from llama_backend import get_llama_backend, get_model_manager
+from model_manager import get_model_manager
 from tool_parser import get_tool_parser, get_tool_validator
 from utils.gpu_monitor import get_gpu_monitor
 from utils.logging_config import setup_logging
@@ -134,8 +134,8 @@ class Qwen3APIServer:
 
         self.config_path = config_path
         self.config = self._load_config()
-        self.model_manager = get_model_manager(self.config)
-        self.backend = get_llama_backend(self.config)
+        self.model_manager = get_model_manager(self.config_path)
+        self.backend = self.model_manager.backend  # Use backend from model manager
         self.tool_parser = get_tool_parser()
         self.tool_validator = get_tool_validator()
         self.gpu_monitor = get_gpu_monitor()
@@ -145,7 +145,7 @@ class Qwen3APIServer:
         self.template_manager = TemplateManager(template_dir)
 
         # Download tracking
-        self.download_status = {}
+        self.download_status: dict[str, dict[str, Any]] = {}
 
         # Load active model
         active_model = self.config.get("active_model")
@@ -200,7 +200,8 @@ class Qwen3APIServer:
         """Load configuration file"""
         try:
             with open(self.config_path) as f:
-                return json.load(f)
+                config_data = json.load(f)
+                return dict(config_data) if isinstance(config_data, dict) else {}
         except FileNotFoundError:
             logger.error(f"Configuration file not found: {self.config_path}")
             raise
@@ -231,11 +232,7 @@ class Qwen3APIServer:
                     "created": int(time.time()),
                     "owned_by": "qwen3-server",
                     "description": model_config.get("description", ""),
-                    "context_window": {
-                        "effective_tokens": model_config.get("effective_context_tokens", 32768),
-                        "max_tokens": model_config.get("max_context_tokens", 262144),
-                        "note": "Effectiveness may decrease beyond effective_tokens, but model supports up to max_tokens"
-                    }
+                    "context_window": "dynamic - determined by vLLM based on available memory"
                 }
                 models.append(model_info)
 
@@ -278,17 +275,13 @@ class Qwen3APIServer:
 
                 # Check context window usage and adjust max_tokens if needed
                 prompt_tokens = len(prompt.split())  # Approximate token count
-                current_model_config = self.config["models"].get(self.config.get("active_model", ""), {})
-                effective_context = current_model_config.get("effective_context_tokens", 32768)
-                max_context = current_model_config.get("max_context_tokens", 262144)
 
-                # Check actual runtime context from loaded model
+                # Get actual runtime context from loaded model (let vLLM decide optimal size)
+                max_context = 32768  # Default fallback
                 if hasattr(self.backend, 'model') and self.backend.model:
-                    actual_context = self.backend.model.n_ctx()
-                    logger.info(f"Model runtime context: {actual_context} tokens (config says {max_context})")
-                    if actual_context < max_context:
-                        logger.warning(f"Model loaded with reduced context ({actual_context}) due to memory constraints")
-                        max_context = actual_context  # Use the actual context, not config
+                    actual_context = self.backend.get_context_window()
+                    max_context = actual_context
+                    logger.info(f"Using model runtime context: {actual_context} tokens")
 
                 # Auto-adjust max_tokens to fit in context window
                 available_tokens = max_context - prompt_tokens - 100  # Reserve 100 tokens for safety
@@ -297,14 +290,14 @@ class Qwen3APIServer:
                     request.max_tokens = max(512, available_tokens)  # At least 512 tokens for response
                     logger.warning(f"Reduced max_tokens from {original_max} to {request.max_tokens} to fit context window ({max_context} total, {prompt_tokens} prompt)")
 
-                if prompt_tokens > effective_context:
-                    logger.warning(f"Prompt length ({prompt_tokens} tokens) exceeds effective context window ({effective_context} tokens). Model performance may degrade.")
+                # Log context window usage for debugging
+                logger.info(f"Context usage: {prompt_tokens}/{max_context} tokens ({prompt_tokens/max_context*100:.1f}%)")
 
                 if prompt_tokens > max_context:
                     raise HTTPException(status_code=400, detail=f"Prompt length ({prompt_tokens} tokens) exceeds maximum supported context window ({max_context} tokens)")
 
                 # Prepare generation parameters
-                generation_params = {
+                generation_params: dict[str, Any] = {
                     "temperature": request.temperature,
                     "max_tokens": request.max_tokens,
                     "top_p": request.top_p,
@@ -333,7 +326,7 @@ class Qwen3APIServer:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/admin/switch_model")
-        async def switch_model(request: ModelSwitchRequest):
+        async def switch_model(request: ModelSwitchRequest, background_tasks: BackgroundTasks):
             """Switch to a different model"""
             try:
                 # Check if model is downloaded first
@@ -387,7 +380,7 @@ class Qwen3APIServer:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/admin/download_model")
-        async def download_model(request: ModelSwitchRequest):
+        async def download_model(request: ModelSwitchRequest, background_tasks: BackgroundTasks):
             """Download a model on-demand"""
             try:
                 # Check if model is already downloaded
@@ -426,11 +419,9 @@ class Qwen3APIServer:
         try:
             self.download_status[model_id] = {"status": "downloading", "progress": 0}
 
-            # Create a temporary model manager for downloading
-            temp_manager = get_model_manager(self.config)
-
-            # Download the model
-            success = temp_manager.download_model(model_id)
+            # TODO: Implement model downloading functionality
+            # For now, mark as failed since download_model is not implemented
+            success = False
 
             if success:
                 self.download_status[model_id] = {"status": "completed", "progress": 100}
@@ -542,7 +533,7 @@ class Qwen3APIServer:
             logger.info(f"CLEAN TEXT: {clean_text!r}")
 
             # Prepare choice
-            choice = {
+            choice: dict[str, Any] = {
                 "index": 0,
                 "message": {
                     "role": "assistant",
@@ -557,6 +548,7 @@ class Qwen3APIServer:
             # Create response
             response = ChatCompletionResponse(
                 id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                object="chat.completion",
                 created=int(time.time()),
                 model=self.config.get("active_model", "unknown"),
                 choices=[choice],
@@ -571,7 +563,7 @@ class Qwen3APIServer:
             logger.info("=== RESPONSE SENT ===")
             logger.info(f"Tool calls: {len(tool_calls)}, Finish reason: {choice['finish_reason']}")
 
-            return response.model_dump()
+            return response
 
         except Exception as e:
             logger.error(f"Generation error: {e}")
@@ -734,7 +726,7 @@ def main():
         # Override context window if specified
         if args.context_window:
             logger.info(f"Overriding context window to {args.context_window} tokens")
-            server.backend.llama_settings["n_ctx"] = args.context_window
+            # Context window override not supported for vLLM backend
 
         # Load specific model if requested
         if args.model:
