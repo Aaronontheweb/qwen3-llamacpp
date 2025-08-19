@@ -140,40 +140,14 @@ class VLLMBackend(BaseBackend):
         else:
             model_memory_gb = 10  # Default estimate
 
-        # Calculate context length based on empirical memory usage
-        # IMPORTANT: With tensor parallelism, KV cache is distributed across multiple GPUs
-        tensor_parallel_size = settings["tensor_parallel_size"]
-        
-        # Based on actual testing: ~5.8GB free per GPU after model load
-        available_per_gpu_gb = total_memory_gb - model_memory_gb
-        total_available_gb = available_per_gpu_gb * tensor_parallel_size
-        
-        logger.info(f"GPU memory: {total_memory_gb}GB total, Model uses: {model_memory_gb}GB")
-        logger.info(f"Available per GPU: {available_per_gpu_gb:.1f}GB, Total across {tensor_parallel_size} GPUs: {total_available_gb:.1f}GB")
-        
-        # Use empirical estimate: roughly 80MB per 1K tokens for distributed KV cache
-        # This is based on actual vLLM behavior with tensor parallelism
-        kv_mb_per_1k_tokens = 80
-        
-        # Use 80% of available memory to leave some headroom
-        max_context_from_memory = int((total_available_gb * 1024 * 0.8) / kv_mb_per_1k_tokens * 1000)
-        
-        # Get configurable bounds from settings
-        min_context = settings.get("min_context_length", 16384)  # Default 16K minimum
-        max_context = settings.get("max_context_length", 49152)  # Default 48K maximum
-        
-        # Apply bounds to calculated context
-        target_context = max(min_context, min(max_context_from_memory, max_context))
-        
-        logger.info(f"Setting target context length: {target_context} tokens (estimated max: {max_context_from_memory})")
-
-        # Set max_model_len to our calculated target
-        if settings["max_model_len"] is None:
-            settings["max_model_len"] = target_context
+        # Let vLLM auto-determine optimal context length based on available memory
+        # Don't set max_model_len - let vLLM figure it out
+        logger.info(f"GPU memory: {total_memory_gb}GB total, Model memory estimate: {model_memory_gb}GB")
+        logger.info("Letting vLLM auto-determine optimal context length based on available GPU memory")
 
         # Conservative batch settings to avoid OOM
         if settings["max_num_batched_tokens"] is None:
-            settings["max_num_batched_tokens"] = min(8192, target_context // 4)
+            settings["max_num_batched_tokens"] = 8192
 
         # Enable optimizations for large models
         if param_count >= 30:
