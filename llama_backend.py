@@ -386,19 +386,40 @@ class ModelManager:
             logger.error(f"Model directory not found: {model_dir}")
             return False
 
-        # Look for any .gguf file in the model directory (including subdirectories)
+        # Look for .gguf file matching the specified quantization, fallback to any .gguf file
         model_path = None
-        for root, _dirs, files in os.walk(model_dir):
-            for file in files:
-                if file.endswith('.gguf'):
-                    test_path = os.path.join(root, file)
-                    # Check if file is not empty
-                    if os.path.exists(test_path) and os.path.getsize(test_path) > 0:
-                        model_path = test_path
-                        logger.info(f"Found model file: {model_path}")
-                        break
-            if model_path:
-                break
+        preferred_quantization = model_config.get("quantization")
+
+        # First pass: look for specific quantization if specified
+        if preferred_quantization:
+            for root, _dirs, files in os.walk(model_dir):
+                for file in files:
+                    if file.endswith('.gguf') and preferred_quantization in file:
+                        test_path = os.path.join(root, file)
+                        # Check if file is not empty
+                        if os.path.exists(test_path) and os.path.getsize(test_path) > 0:
+                            model_path = test_path
+                            logger.info(f"Found preferred quantization model file: {model_path}")
+                            break
+                if model_path:
+                    break
+
+        # Second pass: fallback to any .gguf file if preferred quantization not found
+        if not model_path:
+            for root, _dirs, files in os.walk(model_dir):
+                for file in files:
+                    if file.endswith('.gguf'):
+                        test_path = os.path.join(root, file)
+                        # Check if file is not empty
+                        if os.path.exists(test_path) and os.path.getsize(test_path) > 0:
+                            model_path = test_path
+                            if preferred_quantization:
+                                logger.warning(f"Preferred quantization {preferred_quantization} not found, using: {model_path}")
+                            else:
+                                logger.info(f"Found model file: {model_path}")
+                            break
+                if model_path:
+                    break
 
         if not model_path:
             logger.error(f"No model file found in {model_dir}")
