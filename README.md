@@ -42,9 +42,6 @@ git checkout feature/vllm-multi-gpu
 # Install core dependencies
 pip install -r requirements.txt
 
-# Install FlashAttention for memory optimization (required for large context windows)
-pip install flash-attn --no-build-isolation
-
 # Verify GPU detection
 python -c "import torch; print(f'GPUs: {torch.cuda.device_count()}')"
 ```

@@ -32,9 +32,9 @@ rich>=13.0.0
 aiohttp>=3.9.0
 httpx>=0.25.0
 
-# Memory optimizations 
-einops>=0.8.0  # Required by flash-attn
-# flash-attn>=2.5.0  # Install separately after torch: pip install flash-attn --no-build-isolation
+# Optional optimizations (install manually if needed)
+# flash-attn>=2.5.0  # For FlashAttention support - significant memory savings
+# einops>=0.8.0  # Required by flash-attn
 
 # Optional optimizations (install separately if needed)
 # xformers>=0.0.23  # For memory efficient attention
