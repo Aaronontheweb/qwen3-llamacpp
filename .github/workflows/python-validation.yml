@@ -3,20 +3,8 @@ name: Python Validation
 on:
   push:
     branches: [ master, main ]
-    paths:
-      - '**.py'
-      - 'requirements*.txt'
-      - '.github/workflows/python-validation.yml'
-      - 'ruff.toml'
-      - '.flake8'
   pull_request:
     branches: [ master, main ]
-    paths:
-      - '**.py'
-      - 'requirements*.txt'
-      - '.github/workflows/python-validation.yml'
-      - 'ruff.toml'
-      - '.flake8'
 
 jobs:
   validate:
