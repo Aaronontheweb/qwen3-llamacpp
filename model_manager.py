@@ -364,7 +364,8 @@ class ModelManagerCLI:
         """Load configuration file"""
         try:
             with open(self.config_path) as f:
-                return json.load(f)
+                data = json.load(f)
+                return dict(data) if isinstance(data, dict) else {}
         except FileNotFoundError:
             console.print(f"[red]Configuration file not found: {self.config_path}[/red]")
             sys.exit(1)
@@ -529,10 +530,10 @@ def cli(ctx, config):
     ctx.obj = ModelManagerCLI(config)
 
 
-@cli.command()
+@cli.command("list")
 @click.option('--details', is_flag=True, help='Show detailed information')
 @click.pass_obj
-def list(manager, details):
+def list_models_cmd(manager, details):
     """List available models"""
     manager.list_models(show_details=details)
 
