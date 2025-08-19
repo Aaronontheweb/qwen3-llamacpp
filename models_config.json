@@ -17,7 +17,6 @@
       "type": "instruction",
       "size": "30B",
       "description": "Large instruction-following model for complex tasks",
-      "max_context_tokens": 131072,
       "quantization": "AWQ",
       "default_params": {
         "temperature": 0.7,
@@ -30,7 +29,6 @@
       "type": "instruction",
       "size": "15B",
       "description": "Medium reasoning model, good balance",
-      "max_context_tokens": 131072,
       "quantization": "AWQ",
       "default_params": {
         "temperature": 0.7,
@@ -43,7 +41,6 @@
       "type": "instruction",
       "size": "7B",
       "description": "Fast model for general tasks",
-      "max_context_tokens": 32768,
       "quantization": "GPTQ",
       "default_params": {
         "temperature": 0.7,
@@ -56,7 +53,6 @@
       "type": "instruction",
       "size": "4B",
       "description": "Very fast model for simple tasks",
-      "max_context_tokens": 131072,
       "quantization": null,
       "default_params": {
         "temperature": 0.7,
@@ -69,7 +65,6 @@
       "type": "coder",
       "size": "30B",
       "description": "Specialized for code generation and programming",
-      "max_context_tokens": 8192,
       "quantization": "AWQ",
       "default_params": {
         "temperature": 0.3,

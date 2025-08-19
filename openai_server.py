@@ -232,11 +232,7 @@ class Qwen3APIServer:
                     "created": int(time.time()),
                     "owned_by": "qwen3-server",
                     "description": model_config.get("description", ""),
-                    "context_window": {
-                        "effective_tokens": model_config.get("effective_context_tokens", 32768),
-                        "max_tokens": model_config.get("max_context_tokens", 262144),
-                        "note": "Effectiveness may decrease beyond effective_tokens, but model supports up to max_tokens"
-                    }
+                    "context_window": "dynamic - determined by vLLM based on available memory"
                 }
                 models.append(model_info)
 
@@ -279,17 +275,13 @@ class Qwen3APIServer:
 
                 # Check context window usage and adjust max_tokens if needed
                 prompt_tokens = len(prompt.split())  # Approximate token count
-                current_model_config = self.config["models"].get(self.config.get("active_model", ""), {})
-                effective_context = current_model_config.get("effective_context_tokens", 32768)
-                max_context = current_model_config.get("max_context_tokens", 262144)
-
-                # Check actual runtime context from loaded model
+                
+                # Get actual runtime context from loaded model (let vLLM decide optimal size)
+                max_context = 32768  # Default fallback
                 if hasattr(self.backend, 'model') and self.backend.model:
                     actual_context = self.backend.get_context_window()
-                    logger.info(f"Model runtime context: {actual_context} tokens (config says {max_context})")
-                    if actual_context < max_context:
-                        logger.warning(f"Model loaded with reduced context ({actual_context}) due to memory constraints")
-                        max_context = actual_context  # Use the actual context, not config
+                    max_context = actual_context
+                    logger.info(f"Using model runtime context: {actual_context} tokens")
 
                 # Auto-adjust max_tokens to fit in context window
                 available_tokens = max_context - prompt_tokens - 100  # Reserve 100 tokens for safety
@@ -298,8 +290,8 @@ class Qwen3APIServer:
                     request.max_tokens = max(512, available_tokens)  # At least 512 tokens for response
                     logger.warning(f"Reduced max_tokens from {original_max} to {request.max_tokens} to fit context window ({max_context} total, {prompt_tokens} prompt)")
 
-                if prompt_tokens > effective_context:
-                    logger.warning(f"Prompt length ({prompt_tokens} tokens) exceeds effective context window ({effective_context} tokens). Model performance may degrade.")
+                # Log context window usage for debugging
+                logger.info(f"Context usage: {prompt_tokens}/{max_context} tokens ({prompt_tokens/max_context*100:.1f}%)")
 
                 if prompt_tokens > max_context:
                     raise HTTPException(status_code=400, detail=f"Prompt length ({prompt_tokens} tokens) exceeds maximum supported context window ({max_context} tokens)")

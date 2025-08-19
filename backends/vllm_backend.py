@@ -147,9 +147,9 @@ class VLLMBackend(BaseBackend):
         kv_mb_per_1k_tokens = 100
         max_context_from_memory = int((kv_cache_memory_gb * 1024) / kv_mb_per_1k_tokens * 1000)
 
-        # Use model's max context or calculated, whichever is smaller
-        model_max_context = model_config.get("max_context_tokens", 131072)
-        optimal_context = min(max_context_from_memory, model_max_context)
+        # Use calculated context based on available memory
+        # Let vLLM determine the optimal context length based on model capabilities and memory
+        optimal_context = max_context_from_memory
 
         # Set max_model_len if not specified
         if settings["max_model_len"] is None:
