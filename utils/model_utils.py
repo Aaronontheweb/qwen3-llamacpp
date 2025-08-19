@@ -159,7 +159,7 @@ def get_downloaded_models(download_path: str) -> list[dict[str, Any]]:
     Returns:
         List of model information dictionaries
     """
-    models = []
+    models: list[dict[str, Any]] = []
 
     if not os.path.exists(download_path):
         return models
