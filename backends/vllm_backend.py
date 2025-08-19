@@ -140,9 +140,15 @@ class VLLMBackend(BaseBackend):
         else:
             model_memory_gb = 10  # Default estimate
 
-        # Don't set max_model_len here - let vLLM auto-detect and handle retries in load_model
+        # Set a reasonable max_model_len based on available memory to avoid OOM
+        # From testing: ~31K tokens works with 2.8GB total KV cache available
+        reasonable_context = 30000  # Conservative estimate that should work
+        
+        if settings["max_model_len"] is None:
+            settings["max_model_len"] = reasonable_context
+            logger.info(f"Setting context length to {reasonable_context} tokens (conservative estimate)")
+        
         logger.info(f"GPU memory: {total_memory_gb}GB total, Model memory estimate: {model_memory_gb}GB")
-        logger.info("Will let vLLM determine optimal context length and retry if needed")
 
         # Conservative batch settings to avoid OOM
         if settings["max_num_batched_tokens"] is None:
@@ -154,67 +160,6 @@ class VLLMBackend(BaseBackend):
             logger.info("Enabled chunked prefill for large model")
 
         return settings
-
-    def _try_load_with_context_retry(self, model_path: str, settings: dict[str, Any]) -> Any:
-        """Try loading vLLM with auto-context, retry with suggested max if needed"""
-        import re
-        
-        try:
-            # First attempt: let vLLM auto-determine context length
-            logger.info("Attempting to load with vLLM auto-determined context length")
-            return LLM(
-                model=model_path,
-                tensor_parallel_size=settings["tensor_parallel_size"],
-                pipeline_parallel_size=settings["pipeline_parallel_size"],
-                gpu_memory_utilization=settings["gpu_memory_utilization"],
-                max_num_seqs=settings["max_num_seqs"],
-                max_model_len=settings["max_model_len"],
-                kv_cache_dtype=settings["kv_cache_dtype"],
-                dtype=settings["dtype"],
-                enforce_eager=settings["enforce_eager"],
-                enable_prefix_caching=settings["enable_prefix_caching"],
-                enable_chunked_prefill=settings["enable_chunked_prefill"],
-                quantization=settings["quantization"],
-                trust_remote_code=settings["trust_remote_code"],
-                tokenizer_mode=settings["tokenizer_mode"],
-                download_dir=settings["download_dir"],
-                load_format=settings["load_format"],
-                seed=settings["seed"]
-            )
-        
-        except ValueError as e:
-            error_msg = str(e)
-            if "KV cache is needed" in error_msg and "estimated maximum model length is" in error_msg:
-                # Parse suggested maximum from error message
-                match = re.search(r"estimated maximum model length is (\d+)", error_msg)
-                if match:
-                    suggested_max = int(match.group(1))
-                    logger.info(f"vLLM suggested maximum context length: {suggested_max} tokens")
-                    logger.info("Retrying with suggested context length...")
-                    
-                    # Retry with suggested maximum
-                    return LLM(
-                        model=model_path,
-                        tensor_parallel_size=settings["tensor_parallel_size"],
-                        pipeline_parallel_size=settings["pipeline_parallel_size"],
-                        gpu_memory_utilization=settings["gpu_memory_utilization"],
-                        max_num_seqs=settings["max_num_seqs"],
-                        max_model_len=suggested_max,  # Use vLLM's suggestion
-                        kv_cache_dtype=settings["kv_cache_dtype"],
-                        dtype=settings["dtype"],
-                        enforce_eager=settings["enforce_eager"],
-                        enable_prefix_caching=settings["enable_prefix_caching"],
-                        enable_chunked_prefill=settings["enable_chunked_prefill"],
-                        quantization=settings["quantization"],
-                        trust_remote_code=settings["trust_remote_code"],
-                        tokenizer_mode=settings["tokenizer_mode"],
-                        download_dir=settings["download_dir"],
-                        load_format=settings["load_format"],
-                        seed=settings["seed"]
-                    )
-            
-            # Re-raise if not a memory error or couldn't parse suggestion
-            raise
 
     def load_model(self, model_path: str, model_config: dict[str, Any]) -> bool:
         """
@@ -246,9 +191,25 @@ class VLLMBackend(BaseBackend):
 
             start_time = time.time()
 
-            # Try loading with auto-determined context, retry with vLLM's suggestion if needed
-            self.llm_engine = self._try_load_with_context_retry(
-                model_path, settings
+            # Create vLLM engine with conservative context length
+            self.llm_engine = LLM(
+                model=model_path,
+                tensor_parallel_size=settings["tensor_parallel_size"],
+                pipeline_parallel_size=settings["pipeline_parallel_size"],
+                gpu_memory_utilization=settings["gpu_memory_utilization"],
+                max_num_seqs=settings["max_num_seqs"],
+                max_model_len=settings["max_model_len"],
+                kv_cache_dtype=settings["kv_cache_dtype"],
+                dtype=settings["dtype"],
+                enforce_eager=settings["enforce_eager"],
+                enable_prefix_caching=settings["enable_prefix_caching"],
+                enable_chunked_prefill=settings["enable_chunked_prefill"],
+                quantization=settings["quantization"],
+                trust_remote_code=settings["trust_remote_code"],
+                tokenizer_mode=settings["tokenizer_mode"],
+                download_dir=settings["download_dir"],
+                load_format=settings["load_format"],
+                seed=settings["seed"]
             )
 
             load_time = time.time() - start_time
