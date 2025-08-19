@@ -61,7 +61,7 @@ def test_gpu_monitoring():
 
         if gpu_info:
             for gpu in gpu_info:
-                print(f"  - GPU {gpu['index']}: {gpu['name']} ({gpu['total_memory_mb']/1024:.1f}GB)")
+                print(f"  - GPU {gpu['index']}: {gpu['name']} ({gpu['total_memory_mb'] / 1024:.1f}GB)")
 
         return True
     except Exception as e:

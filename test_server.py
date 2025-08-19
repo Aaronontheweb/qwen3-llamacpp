@@ -144,8 +144,8 @@ def test_admin_endpoints(base_url: str = "http://localhost:8080") -> bool:
         if response.status_code == 200:
             data = response.json()
             print(f"✓ GPU usage endpoint: {data.get('gpu_count', 0)} GPUs")
-            print(f"  Total memory: {data.get('total_memory_mb', 0)/1024:.1f}GB")
-            print(f"  Available memory: {data.get('available_memory_mb', 0)/1024:.1f}GB")
+            print(f"  Total memory: {data.get('total_memory_mb', 0) / 1024:.1f}GB")
+            print(f"  Available memory: {data.get('available_memory_mb', 0) / 1024:.1f}GB")
         else:
             print(f"✗ GPU usage endpoint failed: {response.status_code}")
             return False
