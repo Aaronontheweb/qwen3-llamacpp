@@ -5,7 +5,7 @@ Model utilities for downloading and managing models
 import glob
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -127,13 +127,13 @@ def is_model_downloaded(model_name: str, download_path: str) -> bool:
     # Look for key HuggingFace model files
     required_files = ['config.json', 'tokenizer.json']
     model_files = ['pytorch_model.bin', 'model.safetensors', 'pytorch_model-00001-of-*.bin']
-    
+
     # Check for required config files
     for required_file in required_files:
         file_path = os.path.join(model_path, required_file)
         if not os.path.exists(file_path):
             return False
-    
+
     # Check for at least one model file
     for pattern in model_files:
         if '*' in pattern:
@@ -170,7 +170,7 @@ def get_downloaded_models(download_path: str) -> list[dict[str, Any]]:
             if os.path.isdir(model_dir):
                 # Convert directory name back to model name
                 model_name = item.replace("_", "/")
-                
+
                 if is_model_downloaded(model_name, download_path):
                     # Calculate total size
                     total_size = 0
@@ -214,7 +214,7 @@ def cleanup_incomplete_downloads(download_path: str) -> int:
             if os.path.isdir(item_path):
                 # Convert directory name back to model name
                 model_name = item.replace("_", "/")
-                
+
                 if not is_model_downloaded(model_name, download_path):
                     logger.info(f"Cleaning up incomplete download: {item}")
                     import shutil

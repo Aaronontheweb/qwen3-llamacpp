@@ -74,7 +74,6 @@ class BackendFactory:
         except ImportError as e:
             logger.warning(f"vLLM backend not available: {e}")
 
-
     @classmethod
     def get_available_backends(cls) -> list[str]:
         """

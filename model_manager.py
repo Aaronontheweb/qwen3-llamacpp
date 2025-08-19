@@ -104,10 +104,7 @@ class ModelManager:
         backend_config = self.config.get("backend", {})
 
         # Get backend-specific config
-        if backend_type == "vllm":
-            specific_config = backend_config.get("vllm_config", {})
-        else:
-            specific_config = {}
+        specific_config = backend_config.get("vllm_config", {}) if backend_type == "vllm" else {}
 
         # Handle auto tensor_parallel_size for vLLM
         if backend_type == "vllm" and specific_config.get("tensor_parallel_size") == "auto":
@@ -472,9 +469,9 @@ class ModelManagerCLI:
 
         status_text = Text()
         status_text.append("GPU Status:\n", style="cyan")
-        status_text.append(f"  Total Memory: {gpu_summary['total_memory_mb']/1024:.1f}GB\n", style="white")
-        status_text.append(f"  Used Memory: {gpu_summary['used_memory_mb']/1024:.1f}GB\n", style="white")
-        status_text.append(f"  Available Memory: {gpu_summary['available_memory_mb']/1024:.1f}GB\n", style="white")
+        status_text.append(f"  Total Memory: {gpu_summary['total_memory_mb'] / 1024:.1f}GB\n", style="white")
+        status_text.append(f"  Used Memory: {gpu_summary['used_memory_mb'] / 1024:.1f}GB\n", style="white")
+        status_text.append(f"  Available Memory: {gpu_summary['available_memory_mb'] / 1024:.1f}GB\n", style="white")
         status_text.append(f"  Utilization: {gpu_summary['utilization_percent']:.1f}%\n", style="white")
         status_text.append(f"  GPU Count: {gpu_summary['gpu_count']}\n", style="white")
 
