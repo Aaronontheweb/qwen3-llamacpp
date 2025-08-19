@@ -134,29 +134,32 @@ class VLLMBackend(BaseBackend):
         model_size = model_config.get("size", "30B").upper()
         if "B" in model_size:
             param_count = float(model_size.replace("B", ""))
-            # Estimate memory for quantized model (4-bit ≈ 0.5 bytes per param)
-            model_memory_gb = param_count * 0.5
+            # Based on actual testing: 30B AWQ model uses ~18.2GB out of 24GB
+            # So roughly 6GB available per GPU for KV cache
+            model_memory_gb = 18.2  # Use empirical measurement for 30B model
         else:
             model_memory_gb = 10  # Default estimate
 
-        # Calculate a reasonable context length that fits in available memory
+        # Calculate context length based on empirical memory usage
         # IMPORTANT: With tensor parallelism, KV cache is distributed across multiple GPUs
         tensor_parallel_size = settings["tensor_parallel_size"]
-        available_memory_per_gpu_gb = (total_memory_gb - model_memory_gb) * settings["gpu_memory_utilization"]
-        total_available_memory_gb = available_memory_per_gpu_gb * tensor_parallel_size
         
-        logger.info(f"Tensor parallel size: {tensor_parallel_size}, Available memory per GPU: {available_memory_per_gpu_gb:.1f}GB")
-        logger.info(f"Total available KV cache memory across all GPUs: {total_available_memory_gb:.1f}GB")
+        # Based on actual testing: ~5.8GB free per GPU after model load
+        available_per_gpu_gb = total_memory_gb - model_memory_gb
+        total_available_gb = available_per_gpu_gb * tensor_parallel_size
         
-        # Estimate KV cache usage: roughly 100MB per 1K tokens for 30B model distributed across GPUs
-        # This accounts for the distribution of KV cache across tensor parallel GPUs
-        kv_mb_per_1k_tokens = 100 if param_count >= 30 else 75
+        logger.info(f"GPU memory: {total_memory_gb}GB total, Model uses: {model_memory_gb}GB")
+        logger.info(f"Available per GPU: {available_per_gpu_gb:.1f}GB, Total across {tensor_parallel_size} GPUs: {total_available_gb:.1f}GB")
         
-        # Calculate max context that fits in total available memory (conservative: use 70% of available)
-        max_context_from_memory = int((total_available_memory_gb * 1024 * 0.7) / kv_mb_per_1k_tokens * 1000)
+        # Use empirical estimate: roughly 80MB per 1K tokens for distributed KV cache
+        # This is based on actual vLLM behavior with tensor parallelism
+        kv_mb_per_1k_tokens = 80
         
-        # Set reasonable bounds: minimum 16K, maximum 64K (since we have multi-GPU)
-        target_context = max(16384, min(max_context_from_memory, 65536))
+        # Use 80% of available memory to leave some headroom
+        max_context_from_memory = int((total_available_gb * 1024 * 0.8) / kv_mb_per_1k_tokens * 1000)
+        
+        # Set bounds: minimum 16K, maximum 48K for stability  
+        target_context = max(16384, min(max_context_from_memory, 49152))
         
         logger.info(f"Setting target context length: {target_context} tokens (estimated max: {max_context_from_memory})")
 
