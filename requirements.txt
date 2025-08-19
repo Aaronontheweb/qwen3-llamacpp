@@ -24,6 +24,10 @@ psutil>=5.9.0
 huggingface-hub>=0.19.0
 tokenizers>=0.15.0
 
+# CLI interface
+click>=8.1.0
+rich>=13.0.0
+
 # Async support
 aiohttp>=3.9.0
 httpx>=0.25.0
