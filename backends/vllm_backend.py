@@ -87,7 +87,7 @@ class VLLMBackend(BaseBackend):
             count = torch.cuda.device_count()
             if count > 0:
                 logger.info(f"Detected {count} CUDA device(s)")
-                
+
                 # Setup CUDA_VISIBLE_DEVICES for multi-GPU if not already set
                 import os
                 if "CUDA_VISIBLE_DEVICES" not in os.environ:
@@ -102,13 +102,13 @@ class VLLMBackend(BaseBackend):
                         logger.info("Set CUDA_VISIBLE_DEVICES=0 for single GPU")
                 else:
                     logger.info(f"CUDA_VISIBLE_DEVICES already set: {os.environ['CUDA_VISIBLE_DEVICES']}")
-                
+
                 # Log GPU details
                 for i in range(count):
                     name = torch.cuda.get_device_name(i)
                     memory = torch.cuda.get_device_properties(i).total_memory / (1024**3)
                     logger.info(f"  GPU {i}: {name} ({memory:.1f} GB)")
-            
+
             return int(count)
         except Exception as e:
             logger.warning(f"Failed to detect GPUs: {e}")

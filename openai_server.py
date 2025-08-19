@@ -275,7 +275,7 @@ class Qwen3APIServer:
 
                 # Check context window usage and adjust max_tokens if needed
                 prompt_tokens = len(prompt.split())  # Approximate token count
-                
+
                 # Get actual runtime context from loaded model (let vLLM decide optimal size)
                 max_context = 32768  # Default fallback
                 if hasattr(self.backend, 'model') and self.backend.model:
