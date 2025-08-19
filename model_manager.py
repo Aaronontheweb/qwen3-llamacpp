@@ -168,7 +168,7 @@ class ModelManagerCLI:
             memory_check = self.gpu_monitor.check_model_fits(model_config["memory_estimate_gb"])
             if not memory_check[0]:  # memory_check returns (fits, details)
                 console.print(f"[red]Warning: Model requires {model_config['memory_estimate_gb']}GB but only "
-                              f"{memory_check[1]['available_memory_mb']/1024:.1f}GB available[/red]")
+                              f"{memory_check[1]['available_memory_mb'] / 1024:.1f}GB available[/red]")
                 if not click.confirm("Continue with download anyway?"):
                     return False
 
@@ -374,8 +374,8 @@ class ModelManagerCLI:
         status_text = Text()
         status_text.append(f"Model: {model_id}\n", style="cyan")
         status_text.append(f"Required Memory: {required_memory_gb}GB\n", style="red")
-        status_text.append(f"Available Memory: {memory_check['available_memory_mb']/1024:.1f}GB\n", style="green")
-        status_text.append(f"Total Memory: {memory_check['total_memory_mb']/1024:.1f}GB\n", style="yellow")
+        status_text.append(f"Available Memory: {memory_check['available_memory_mb'] / 1024:.1f}GB\n", style="green")
+        status_text.append(f"Total Memory: {memory_check['total_memory_mb'] / 1024:.1f}GB\n", style="yellow")
 
         if memory_check["fits"]:
             status_text.append("Status: ✓ Fits in memory\n", style="green")
@@ -386,8 +386,8 @@ class ModelManagerCLI:
         status_text.append("\nGPU Details:\n", style="white")
         for gpu in memory_check["gpu_details"]:
             status_text.append(f"  GPU {gpu['index']} ({gpu['name']}): "
-                               f"{gpu['free_memory_mb']/1024:.1f}GB free / "
-                               f"{gpu['total_memory_mb']/1024:.1f}GB total\n", style="white")
+                               f"{gpu['free_memory_mb'] / 1024:.1f}GB free / "
+                               f"{gpu['total_memory_mb'] / 1024:.1f}GB total\n", style="white")
 
         panel = Panel(status_text, title="Memory Check", border_style="blue")
         console.print(panel)
@@ -470,9 +470,9 @@ def status(manager):
 
     status_text = Text()
     status_text.append("GPU Status:\n", style="cyan")
-    status_text.append(f"  Total Memory: {gpu_summary['total_memory_mb']/1024:.1f}GB\n", style="white")
-    status_text.append(f"  Used Memory: {gpu_summary['used_memory_mb']/1024:.1f}GB\n", style="white")
-    status_text.append(f"  Available Memory: {gpu_summary['available_memory_mb']/1024:.1f}GB\n", style="white")
+    status_text.append(f"  Total Memory: {gpu_summary['total_memory_mb'] / 1024:.1f}GB\n", style="white")
+    status_text.append(f"  Used Memory: {gpu_summary['used_memory_mb'] / 1024:.1f}GB\n", style="white")
+    status_text.append(f"  Available Memory: {gpu_summary['available_memory_mb'] / 1024:.1f}GB\n", style="white")
     status_text.append(f"  Utilization: {gpu_summary['utilization_percent']:.1f}%\n", style="white")
     status_text.append(f"  GPU Count: {gpu_summary['gpu_count']}\n", style="white")
 

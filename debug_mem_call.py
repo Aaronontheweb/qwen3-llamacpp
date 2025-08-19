@@ -107,7 +107,7 @@ Let me find that information."""
     parser = get_tool_parser()
 
     for i, xml in enumerate(possible_outputs):
-        print(f"\nTest {i+1}:")
+        print(f"\nTest {i + 1}:")
         tool_calls = parser.extract_tool_calls(xml)
         print(f"  Tool calls: {len(tool_calls)}")
         if tool_calls:
