@@ -10,9 +10,9 @@ safetensors>=0.4.0
 sentencepiece>=0.1.99
 protobuf>=3.20.0
 
-# Memory optimizations (install after torch)
-flash-attn>=2.5.0
+# Memory optimizations 
 einops>=0.8.0
+# flash-attn>=2.5.0  # Install via install_deps.sh script
 
 # API Server
 fastapi>=0.104.0

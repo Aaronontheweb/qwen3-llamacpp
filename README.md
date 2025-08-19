@@ -39,8 +39,9 @@ git checkout feature/vllm-multi-gpu
 ### 2. Install Dependencies
 
 ```bash
-# Install core dependencies
-pip install -r requirements.txt
+# Install all dependencies including FlashAttention
+chmod +x install_deps.sh
+./install_deps.sh
 
 # Verify GPU detection
 python -c "import torch; print(f'GPUs: {torch.cuda.device_count()}')"
