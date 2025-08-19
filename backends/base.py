@@ -97,7 +97,8 @@ class BaseBackend(ABC):
     def get_context_window(self) -> int:
         """Get the maximum context window size"""
         if self.model_config:
-            return self.model_config.get("max_context_tokens", 4096)
+            max_tokens = self.model_config.get("max_context_tokens", 4096)
+            return int(max_tokens) if max_tokens is not None else 4096
         return 4096
 
     def validate_request(self, prompt: str, **kwargs) -> tuple[bool, Optional[str]]:

@@ -59,7 +59,8 @@ class BackendFactory:
         config["backend_type"] = backend_type
 
         logger.info(f"Creating {backend_type} backend")
-        backend_instance = backend_class(config)
+        from .base import BaseBackend
+        backend_instance: BaseBackend = backend_class(config)
         return backend_instance
 
     @classmethod

@@ -68,10 +68,10 @@ jobs:
         # Run full flake8 check - will fail on any linting errors
         flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
     
-    - name: Type check with mypy (best effort)
+    - name: Type check with mypy
       run: |
         # Run mypy with lenient settings since we can't install all dependencies
-        mypy . --ignore-missing-imports --no-strict-optional --warn-return-any --warn-unreachable --allow-untyped-defs --allow-incomplete-defs || true
+        mypy . --ignore-missing-imports --no-strict-optional --warn-return-any --warn-unreachable --allow-untyped-defs --allow-incomplete-defs
     
     - name: Check imports (without GPU dependencies)
       run: |

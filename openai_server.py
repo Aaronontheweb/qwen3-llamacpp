@@ -556,6 +556,7 @@ class Qwen3APIServer:
             # Create response
             response = ChatCompletionResponse(
                 id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                object="chat.completion",
                 created=int(time.time()),
                 model=self.config.get("active_model", "unknown"),
                 choices=[choice],
@@ -570,7 +571,7 @@ class Qwen3APIServer:
             logger.info("=== RESPONSE SENT ===")
             logger.info(f"Tool calls: {len(tool_calls)}, Finish reason: {choice['finish_reason']}")
 
-            return response.model_dump()
+            return response
 
         except Exception as e:
             logger.error(f"Generation error: {e}")

@@ -302,7 +302,8 @@ class VLLMBackend(BaseBackend):
             outputs = self.llm_engine.generate([prompt], sampling_params)
 
             # Return the generated text
-            return outputs[0].outputs[0].text
+            text = outputs[0].outputs[0].text
+            return str(text) if text is not None else ""
 
         except Exception as e:
             logger.error(f"Generation failed: {e}")
@@ -378,7 +379,8 @@ class VLLMBackend(BaseBackend):
         """Get the maximum context window size"""
         if self.llm_engine:
             try:
-                return self.llm_engine.llm_engine.model_config.max_model_len
+                max_len = self.llm_engine.llm_engine.model_config.max_model_len
+                return int(max_len) if max_len is not None else super().get_context_window()
             except Exception:
                 pass
         return super().get_context_window()
