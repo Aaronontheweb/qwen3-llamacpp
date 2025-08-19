@@ -91,7 +91,7 @@ class VLLMBackend(BaseBackend):
                     name = torch.cuda.get_device_name(i)
                     memory = torch.cuda.get_device_properties(i).total_memory / (1024**3)
                     logger.info(f"  GPU {i}: {name} ({memory:.1f} GB)")
-            return count
+            return int(count)
         except Exception as e:
             logger.warning(f"Failed to detect GPUs: {e}")
             return 0
